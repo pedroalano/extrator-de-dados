@@ -1,0 +1,52 @@
+import fitz
+import pytest
+
+
+@pytest.fixture
+def sample_pdf_bytes() -> bytes:
+    doc = fitz.open()
+    try:
+        page = doc.new_page()
+        page.insert_text((72, 72), "DANFE Nota Fiscal N 12345")
+        page.insert_text((72, 100), "Emitente 12.345.678/0001-99")
+        page.insert_text((72, 130), "Destinatario 98.765.432/0001-88")
+        page.insert_text((72, 160), "Valor total R$ 20,00")
+        return doc.tobytes()
+    finally:
+        doc.close()
+
+
+def test_process_invoice_returns_json(client, minimal_nfe_xml: bytes, sample_pdf_bytes: bytes):
+    response = client.post(
+        "/process-invoice",
+        files={
+            "xml_file": ("nfe.xml", minimal_nfe_xml, "application/xml"),
+            "pdf_file": ("danfe.pdf", sample_pdf_bytes, "application/pdf"),
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["invoice_number"] == "12345"
+    assert data["issuer"]["cnpj"] == "12345678000199"
+    assert data["receiver"]["cnpj"] == "98765432000188"
+    assert data["total_value"] == 20.0
+    assert len(data["products"]) == 1
+    assert data["products"][0]["code"] == "001"
+    assert "structure_hash" in data
+
+
+def test_process_invoice_rejects_non_xml(client, sample_pdf_bytes: bytes):
+    response = client.post(
+        "/process-invoice",
+        files={
+            "xml_file": ("bad.txt", b"not xml", "text/plain"),
+            "pdf_file": ("danfe.pdf", sample_pdf_bytes, "application/pdf"),
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_health(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json()["status"] == "ok"
