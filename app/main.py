@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 
 from app.api.routers.invoice import router as invoice_router
+from app.api.routers.pdf_extract import router as pdf_extract_router
 from app.config import get_settings
 from app.db.mongo import get_database, mongo_lifespan
 from app.utils.logging import setup_logging
@@ -25,10 +26,14 @@ async def lifespan(app: FastAPI):
 _API_DESCRIPTION = (
     "Processa **XML** de NFe (produto) ou NFS-e (serviço) e **PDF** associado (DANFE ou nota de serviço), "
     "com fluxo híbrido: regras/XPath com cache em MongoDB e LLM quando necessário.\n\n"
+    "Com **`ENABLE_PDF_EXTRACT_ENDPOINT=true`**, aparece também **`POST /extract-pdf`** (só PDF, testes/depuração), "
+    "tag **pdf** no Swagger.\n\n"
     "Documentação interativa: [**Swagger UI** (`/docs`)](/docs) · [**ReDoc** (`/redoc`)](/redoc)."
 )
 
-_OPENAPI_TAGS = [
+_settings_at_boot = get_settings()
+
+_OPENAPI_TAGS: list[dict[str, str]] = [
     {
         "name": "invoice",
         "description": (
@@ -37,6 +42,16 @@ _OPENAPI_TAGS = [
         ),
     },
 ]
+if _settings_at_boot.enable_pdf_extract_endpoint:
+    _OPENAPI_TAGS.append(
+        {
+            "name": "pdf",
+            "description": (
+                "Extração só-PDF para testes e depuração. "
+                "Ative com `ENABLE_PDF_EXTRACT_ENDPOINT=true`."
+            ),
+        },
+    )
 
 app = FastAPI(
     title="Extrator de dados NFe",
@@ -58,3 +73,5 @@ async def request_id_middleware(request: Request, call_next):
 
 
 app.include_router(invoice_router)
+if _settings_at_boot.enable_pdf_extract_endpoint:
+    app.include_router(pdf_extract_router)

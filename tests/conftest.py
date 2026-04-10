@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import fitz
 import pytest
 
 os.environ["TESTING"] = "true"
@@ -31,6 +32,20 @@ def minimal_nfe_xml(fixture_dir: Path) -> bytes:
 @pytest.fixture
 def minimal_nfse_xml(fixture_dir: Path) -> bytes:
     return (fixture_dir / "minimal_nfse.xml").read_bytes()
+
+
+@pytest.fixture
+def sample_pdf_bytes() -> bytes:
+    doc = fitz.open()
+    try:
+        page = doc.new_page()
+        page.insert_text((72, 72), "DANFE Nota Fiscal N 12345")
+        page.insert_text((72, 100), "Emitente 12.345.678/0001-99")
+        page.insert_text((72, 130), "Destinatario 98.765.432/0001-88")
+        page.insert_text((72, 160), "Valor total R$ 20,00")
+        return doc.tobytes()
+    finally:
+        doc.close()
 
 
 @pytest.fixture
