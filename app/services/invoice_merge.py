@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from app.models.domain import InvoiceProcessResponse, Party, ProductLine, TaxesSummary
+from app.models.domain import InvoiceProcessResponse, LineItem, Party, TaxesSummary
+from app.models.invoice_types import InvoiceType
 from app.services.pdf_processor import PdfSideData
-from app.services.xml_processor import XmlProcessResult
+from app.services.xml_extract_common import XmlProcessResult
 
 
 def _merge_party(xml_p: Party, pdf_p: Party | None) -> Party:
@@ -22,17 +23,28 @@ def _merge_party(xml_p: Party, pdf_p: Party | None) -> Party:
     )
 
 
-def _merge_products(
-    xml_list: list[ProductLine], pdf_list: list[ProductLine]
-) -> list[ProductLine]:
+def _merge_items(
+    xml_list: list[LineItem], pdf_list: list[LineItem]
+) -> list[LineItem]:
     if xml_list:
         return xml_list
     return pdf_list
 
 
+def _merge_taxes(
+    xml_t: TaxesSummary, pdf_note: str | None, pdf_iss: float | None
+) -> TaxesSummary:
+    out = xml_t.model_copy(deep=True)
+    if pdf_iss is not None and out.iss is None:
+        out.iss = pdf_iss
+    return out
+
+
 def merge_invoice(
     xml_part: XmlProcessResult,
     pdf_part: PdfSideData,
+    *,
+    invoice_type: InvoiceType,
 ) -> InvoiceProcessResponse:
     warnings: list[str] = list(pdf_part.warnings)
 
@@ -47,17 +59,23 @@ def merge_invoice(
         else pdf_part.total_value
     )
 
-    products = _merge_products(xml_part.products, pdf_part.products)
+    items = _merge_items(xml_part.items, pdf_part.items)
 
-    taxes = xml_part.taxes
-    if pdf_part.taxes_note and not taxes.raw:
+    taxes = _merge_taxes(xml_part.taxes, pdf_part.taxes_note, pdf_part.iss)
+    if pdf_part.taxes_note and not xml_part.taxes.raw:
         warnings.append(f"pdf_taxes_note: {pdf_part.taxes_note}")
 
+    extraction_sources: dict[str, str] = {
+        "xml_mapping": xml_part.mapping_source,
+        "pdf": pdf_part.extraction_mode,
+    }
+
     return InvoiceProcessResponse(
+        invoice_type=invoice_type,
         issuer=issuer,
         receiver=receiver,
         total_value=total_value,
-        products=products,
+        items=items,
         taxes=taxes if isinstance(taxes, TaxesSummary) else TaxesSummary(),
         date=date,
         invoice_number=invoice_number,
@@ -65,6 +83,8 @@ def merge_invoice(
         used_llm_xml=xml_part.used_llm,
         used_llm_pdf=pdf_part.used_llm,
         warnings=warnings,
+        extraction_sources=extraction_sources,
+        field_confidence=None,
     )
 
 
@@ -75,5 +95,5 @@ def xml_field_coverage(x: XmlProcessResult) -> dict[str, bool]:
         "invoice_number": bool(x.invoice_number),
         "date": bool(x.date),
         "total": x.total_value is not None,
-        "products": len(x.products) > 0,
+        "items": len(x.items) > 0,
     }
