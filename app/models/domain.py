@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -10,7 +10,9 @@ class Party(BaseModel):
     address: str | None = None
 
 
-class ProductLine(BaseModel):
+class LineItem(BaseModel):
+    """Linha de produto (NFe) ou serviço (NFS-e)."""
+
     code: str | None = None
     description: str | None = None
     ncm: str | None = None
@@ -20,9 +22,14 @@ class ProductLine(BaseModel):
     total_value: float | None = None
 
 
+# Alias legado (código interno / imports antigos)
+ProductLine = LineItem
+
+
 class TaxesSummary(BaseModel):
     icms: float | None = None
     ipi: float | None = None
+    iss: float | None = None
     pis: float | None = None
     cofins: float | None = None
     total_taxes: float | None = None
@@ -30,10 +37,11 @@ class TaxesSummary(BaseModel):
 
 
 class InvoiceProcessResponse(BaseModel):
+    invoice_type: Literal["nfe", "nfse"]
     issuer: Party
     receiver: Party
     total_value: float | None = None
-    products: list[ProductLine] = Field(default_factory=list)
+    items: list[LineItem] = Field(default_factory=list)
     taxes: TaxesSummary
     date: str | None = None
     invoice_number: str | None = None
@@ -42,3 +50,6 @@ class InvoiceProcessResponse(BaseModel):
     used_llm_xml: bool = False
     used_llm_pdf: bool = False
     warnings: list[str] = Field(default_factory=list)
+
+    field_confidence: dict[str, float] | None = None
+    extraction_sources: dict[str, str] | None = None
