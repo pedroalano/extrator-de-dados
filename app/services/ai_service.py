@@ -9,22 +9,14 @@ import httpx
 from pydantic import BaseModel
 
 from app.config import Settings
+from app.services.prompts import PDF_EXTRACTION_NFE, XML_PATH_DISCOVERY_NFE
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
-XML_PATH_DISCOVERY_SYSTEM = """Você é um especialista em XML de Nota Fiscal eletrônica brasileira (NFe).
-Analise o XML (pode estar truncado) e retorne APENAS um JSON válido com XPaths que usem local-name() para não depender de prefixos de namespace.
-Os XPaths devem ser absolutos a partir da raiz do documento (começar com / ou //) exceto product_inner que são relativos a cada nó de produto.
-Não invente caminhos: baseie-se apenas nas tags visíveis no trecho.
-Campos obrigatórios no JSON: issuer, receiver, invoice_number, date, total_value, products_container, taxes_root.
-product_inner é um objeto com chaves: code, description, ncm, quantity, unit, unit_value, total_value (XPaths relativos com .//).
-"""
-
-PDF_EXTRACTION_SYSTEM = """Você extrai dados estruturados de texto de DANFE/NFe em português.
-Retorne APENAS JSON válido com chaves: issuer_name, issuer_cnpj, receiver_name, receiver_cnpj, invoice_number, date, total_value (número), products (lista de objetos com code, description, quantity, unit_value, total_value quando existir), taxes_note (string livre ou null).
-Use null para campos ausentes. Não invente valores."""
+XML_PATH_DISCOVERY_SYSTEM = XML_PATH_DISCOVERY_NFE
+PDF_EXTRACTION_SYSTEM = PDF_EXTRACTION_NFE
 
 
 def render_template(template: str, **kwargs: Any) -> str:

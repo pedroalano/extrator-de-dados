@@ -2,9 +2,11 @@ import hashlib
 
 from lxml import etree
 
+from app.models.invoice_types import InvoiceType
 
-def compute_structure_hash(xml_bytes: bytes) -> str:
-    """Fingerprint estrutural (tags e profundidade, sem texto)."""
+
+def compute_structure_hash(xml_bytes: bytes, invoice_type: InvoiceType) -> str:
+    """Fingerprint estrutural (tags e profundidade, sem texto), prefixado pelo tipo."""
     root = etree.fromstring(xml_bytes)
     parts: list[str] = []
 
@@ -16,8 +18,20 @@ def compute_structure_hash(xml_bytes: bytes) -> str:
 
     walk(root, 0)
 
-    versao_nodes = root.xpath("//*[local-name()='infNFe']/@versao")
-    versao = versao_nodes[0] if versao_nodes else ""
+    versao = ""
+    if invoice_type == "nfe":
+        versao_nodes = root.xpath("//*[local-name()='infNFe']/@versao")
+        versao = versao_nodes[0] if versao_nodes else ""
+    else:
+        for attr in ("versao", "Versao", "version"):
+            vnodes = root.xpath(f"//*[local-name()='InfNfse']/@{attr}")
+            if vnodes:
+                versao = str(vnodes[0])
+                break
+            vnodes = root.xpath(f"//*[local-name()='Nfse']/@{attr}")
+            if vnodes:
+                versao = str(vnodes[0])
+                break
 
-    payload = versao + "|" + "|".join(parts)
+    payload = f"{invoice_type}|{versao}|" + "|".join(parts)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
