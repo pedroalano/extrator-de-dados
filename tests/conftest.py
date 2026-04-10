@@ -11,9 +11,9 @@ os.environ["STORE_PROCESSED_METADATA"] = "false"
 
 from app.config import get_settings
 from app.main import app
-from app.models.ai_schemas import PdfExtractionLLMResponse, XPathDiscoveryLLMResponse
+from app.models.ai_schemas import NfseXPathMapping, PdfExtractionLLMResponse, XPathDiscoveryLLMResponse
 from app.services.ai_service import AIService
-from app.services.xml_processor import default_nfe_xpath_mapping
+from app.services.nfe_xml_service import default_nfe_xpath_mapping
 
 get_settings.cache_clear()
 
@@ -26,6 +26,11 @@ def fixture_dir() -> Path:
 @pytest.fixture
 def minimal_nfe_xml(fixture_dir: Path) -> bytes:
     return (fixture_dir / "minimal_nfe.xml").read_bytes()
+
+
+@pytest.fixture
+def minimal_nfse_xml(fixture_dir: Path) -> bytes:
+    return (fixture_dir / "minimal_nfse.xml").read_bytes()
 
 
 @pytest.fixture
@@ -48,6 +53,8 @@ class FakeAIService(AIService):
     async def complete_json(self, *, system_prompt, user_prompt, response_model, max_tokens=None, temperature=None):
         if response_model is XPathDiscoveryLLMResponse:
             return default_nfe_xpath_mapping()
+        if response_model is NfseXPathMapping:
+            return NfseXPathMapping()
         if response_model is PdfExtractionLLMResponse:
             return PdfExtractionLLMResponse()
         raise NotImplementedError(response_model)

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CompNfse>
+  <Nfse>
+    <InfNfse>
+      <Numero>888888</Numero>
+      <DataEmissao>2024-02-01</DataEmissao>
+      <PrestadorServico>
+        <IdentificacaoPrestador>
+          <Cnpj>11111111000111</Cnpj>
+        </IdentificacaoPrestador>
+        <RazaoSocial>Prestador NFS-e LTDA</RazaoSocial>
+      </PrestadorServico>
+      <TomadorServico>
+        <IdentificacaoTomador>
+          <CpfCnpj>
+            <Cnpj>22222222000122</Cnpj>
+          </CpfCnpj>
+          <RazaoSocial>Tomador SA</RazaoSocial>
+        </IdentificacaoTomador>
+      </TomadorServico>
+      <Servico>
+        <Valores>
+          <ValorServicos>150.00</ValorServicos>
+          <ValorIss>3.00</ValorIss>
+        </Valores>
+        <Discriminacao>Consultoria tecnica</Discriminacao>
+      </Servico>
+    </InfNfse>
+  </Nfse>
+</CompNfse>
