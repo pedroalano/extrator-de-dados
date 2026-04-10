@@ -22,10 +22,29 @@ async def lifespan(app: FastAPI):
         yield
 
 
+_API_DESCRIPTION = (
+    "Processa **XML** de NFe (produto) ou NFS-e (serviço) e **PDF** associado (DANFE ou nota de serviço), "
+    "com fluxo híbrido: regras/XPath com cache em MongoDB e LLM quando necessário.\n\n"
+    "Documentação interativa: [**Swagger UI** (`/docs`)](/docs) · [**ReDoc** (`/redoc`)](/redoc)."
+)
+
+_OPENAPI_TAGS = [
+    {
+        "name": "invoice",
+        "description": (
+            "Endpoints de processamento de notas fiscais. "
+            "`POST /process-invoice` usa `multipart/form-data` com `xml_file` e `pdf_file`."
+        ),
+    },
+]
+
 app = FastAPI(
     title="Extrator de dados NFe",
     version="0.1.0",
+    description=_API_DESCRIPTION,
+    openapi_tags=_OPENAPI_TAGS,
     lifespan=lifespan,
+    swagger_ui_parameters={"docExpansion": "list"},
 )
 
 

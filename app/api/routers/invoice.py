@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import Annotated
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
 from lxml import etree
 
 from app.api.deps import (
@@ -13,7 +14,7 @@ from app.api.deps import (
     SettingsDep,
     XmlProcessorDep,
 )
-from app.models.domain import InvoiceProcessResponse
+from app.models.domain import HTTPErrorResponse, InvoiceProcessResponse
 from app.services.invoice_merge import merge_invoice, xml_field_coverage
 from app.services.invoice_type_detection import detect_invoice_type
 from app.utils.hashing import sha256_bytes
@@ -21,6 +22,33 @@ from app.utils.hashing import sha256_bytes
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["invoice"])
+
+_PROCESS_INVOICE_DESCRIPTION = (
+    "Envie **dois arquivos** em `multipart/form-data`: `xml_file` (`.xml`) e `pdf_file` (`.pdf`). "
+    "O tipo da nota (NFe ou NFS-e) é detectado pelo XML.\n\n"
+    "Cada arquivo deve respeitar o limite configurado em **`MAX_UPLOAD_BYTES`**.\n\n"
+    "Com **`OPENAI_API_KEY`** vazia, o LLM não é usado; o XML segue mapeamento em cache ou padrão por tipo, "
+    "e o PDF usa heurísticas determinísticas quando possível."
+)
+
+_PROCESS_INVOICE_RESPONSES: dict[int, dict[str, object]] = {
+    400: {
+        "model": HTTPErrorResponse,
+        "description": "XML ou PDF inválido (vazio, malformado ou sem cabeçalho PDF esperado).",
+    },
+    413: {
+        "model": HTTPErrorResponse,
+        "description": "Tamanho de `xml_file` ou `pdf_file` acima de `MAX_UPLOAD_BYTES`.",
+    },
+    422: {
+        "model": HTTPErrorResponse,
+        "description": "Extensão ou nome de arquivo incorreto (ex.: não é `.xml`/`.pdf`) ou corpo da requisição inválido.",
+    },
+    500: {
+        "model": HTTPErrorResponse,
+        "description": "Falha interna ao processar XML ou PDF.",
+    },
+}
 
 
 def _validate_xml_bytes(data: bytes) -> None:
@@ -43,13 +71,26 @@ def _validate_pdf_bytes(data: bytes) -> None:
         )
 
 
-@router.post("/process-invoice", response_model=InvoiceProcessResponse)
+@router.post(
+    "/process-invoice",
+    response_model=InvoiceProcessResponse,
+    summary="Processar NFe ou NFS-e (XML + PDF)",
+    description=_PROCESS_INVOICE_DESCRIPTION,
+    responses=_PROCESS_INVOICE_RESPONSES,
+)
 async def process_invoice(
     request: Request,
     settings: SettingsDep,
     xml_processor: XmlProcessorDep,
     pdf_processor: PdfProcessorDep,
     processed_repo: ProcessedRepoDep,
+    _: Annotated[
+        str | None,
+        Header(
+            alias="X-Request-ID",
+            description="ID opcional de correlação; o mesmo valor é devolvido no header da resposta.",
+        ),
+    ] = None,
     xml_file: UploadFile = File(
         ..., description="Arquivo XML (NFe de produto ou NFS-e de serviço)"
     ),
@@ -142,6 +183,10 @@ async def process_invoice(
     return out
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    summary="Health check",
+    description="Retorna `{\"status\": \"ok\"}` quando a API está respondendo. Use em balanceadores de carga ou smoke tests.",
+)
 async def health() -> dict[str, str]:
     return {"status": "ok"}
