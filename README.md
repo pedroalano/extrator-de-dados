@@ -1,6 +1,6 @@
-# Extrator de dados — NFe (XML + PDF)
+# Extrator de dados — NFe e NFS-e (XML + PDF)
 
-API **FastAPI** assíncrona que processa **XML de NFe** e **PDF (DANFE)** com fluxo híbrido: regras/XPath com cache em **MongoDB** e **LLM** só quando necessário (novo layout XML ou PDF com baixa qualidade de texto).
+API **FastAPI** assíncrona que processa **XML de NFe (produto)** ou **NFS-e (serviço)** e **PDF** (DANFE ou nota de serviço) com fluxo híbrido: regras/XPath com cache em **MongoDB** e **LLM** só quando necessário (novo layout XML ou PDF com baixa qualidade de texto).
 
 ## Requisitos
 
@@ -45,18 +45,18 @@ Ver [`.env.example`](.env.example). Principais:
 |----------|-----------|
 | `MONGODB_URL` | URI do MongoDB |
 | `MONGODB_DB` | Nome do banco |
-| `OPENAI_API_KEY` | Chave da API (vazia = sem LLM; XML usa mapeamento NFe padrão) |
+| `OPENAI_API_KEY` | Chave da API (vazia = sem LLM; XML usa mapeamento padrão por tipo) |
 | `OPENAI_BASE_URL` | Base URL compatível OpenAI |
 | `OPENAI_MODEL` | Modelo |
 | `MAX_UPLOAD_BYTES` | Tamanho máximo por arquivo |
-| `PDF_CACHE_MAX_ENTRIES` | LRU em memória para resultados de PDF |
+| `PDF_CACHE_MAX_ENTRIES` | LRU em memória para resultados de PDF (por tipo + hash do arquivo) |
 | `STORE_PROCESSED_METADATA` | Gravar metadados em `processed_invoices` |
 
 ## Endpoint
 
 `POST /process-invoice` — `multipart/form-data`:
 
-- `xml_file`: arquivo `.xml`
+- `xml_file`: arquivo `.xml` (NFe ou NFS-e)
 - `pdf_file`: arquivo `.pdf`
 
 ### Exemplo com curl
@@ -68,15 +68,36 @@ curl -s -X POST "http://localhost:8000/process-invoice" \
   -F "pdf_file=@/caminho/danfe.pdf;type=application/pdf"
 ```
 
-Resposta JSON inclui `issuer`, `receiver`, `total_value`, `products`, `taxes`, `date`, `invoice_number`, além de `structure_hash`, `used_llm_xml`, `used_llm_pdf` e `warnings`.
+### Resposta JSON (schema unificado)
+
+| Campo | Descrição |
+|-------|-----------|
+| `invoice_type` | `"nfe"` ou `"nfse"` (detecção automática pelo XML) |
+| `issuer` / `receiver` | Emitente/prestador e destinatário/tomador |
+| `items` | Lista de linhas: produtos (NFe) ou serviços (NFS-e) |
+| `total_value` | Valor total |
+| `taxes` | `icms`, `ipi`, `iss`, `pis`, `cofins`, etc. (o que existir no documento) |
+| `date` | Data de emissão (ou competência, conforme XML) |
+| `invoice_number` | Número da nota |
+| `structure_hash` | Fingerprint estrutural do XML (inclui o tipo) |
+| `used_llm_xml` / `used_llm_pdf` | Se o LLM foi usado em cada etapa |
+| `warnings` | Avisos (ex.: falha parcial no PDF) |
+| `extraction_sources` | Origem do mapeamento XML (`cached` / `llm` / `default`) e do PDF (`deterministic` / `llm`) |
+
+**Breaking change:** o campo `products` foi substituído por **`items`** na resposta.
+
+Exemplos mínimos de XML estão em [`tests/fixtures/minimal_nfe.xml`](tests/fixtures/minimal_nfe.xml) e [`tests/fixtures/minimal_nfse.xml`](tests/fixtures/minimal_nfse.xml).
 
 ## Comportamento resumido
 
-1. **XML:** calcula fingerprint estrutural → busca `xml_mappings` no Mongo → se não existir e houver chave LLM, envia amostra do XML ao modelo para obter XPaths; persiste o mapeamento; extrai dados com `lxml`.
-2. **PDF:** extrai texto com **PyMuPDF**; avalia heurística de qualidade; se necessário (e houver chave), envia texto ao LLM.
-3. **Fusão:** prioriza dados do XML; PDF preenche lacunas.
+1. **Detecção:** o XML é classificado como NFe ou NFS-e (tags raiz, namespaces, presença de prestador/tomador/serviço/ISS, etc.).
+2. **XML:** calcula fingerprint estrutural **por tipo** → busca `xml_mappings` no Mongo (`structure_hash` + `invoice_type`) → se não existir e houver chave LLM, envia amostra do XML ao modelo com prompt específico (NFe ou NFS-e); persiste o mapeamento; extrai dados com `lxml`.
+3. **PDF:** extrai texto com **PyMuPDF**; heurística de qualidade (com reforço para NFS-e: ISS, serviço, etc.); se necessário (e houver chave), envia texto ao LLM com prompt NFe ou NFS-e.
+4. **Fusão:** prioriza dados do XML; PDF preenche lacunas (incluindo `iss` no PDF quando o XML não trouxer).
 
-**OCR** não está incluído: PDFs somente imagem tendem a baixa qualidade de texto e o LLM receberá pouco conteúdo.
+Documentos antigos em `xml_mappings` **sem** `invoice_type` são tratados como **NFe** na leitura.
+
+**OCR** não está incluído: PDFs somente imagem tendem a baixa qualidade de texto e o LLM receberá pouco conteúdo. (Extensão futura: **pdfplumber** para tabelas em layouts muito tabulares.)
 
 ## Testes
 
@@ -94,6 +115,12 @@ app/
   api/deps.py
   api/routers/invoice.py
   services/
+    invoice_type_detection.py
+    nfe_xml_service.py
+    nfse_xml_service.py
+    xml_processor.py
+    invoice_processors.py
+    prompts.py
   models/
   db/
   utils/
