@@ -62,3 +62,30 @@ def test_openapi_health_summary(openapi_schema: dict):
     get_op = openapi_schema["paths"]["/health"]["get"]
     assert get_op.get("summary")
     assert get_op.get("description")
+
+
+def test_openapi_pdf_extract_router_schema():
+    """Schema do router `pdf` sem depender de ENABLE_PDF_EXTRACT_ENDPOINT na app principal."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.api.routers.pdf_extract import router as pdf_router
+
+    mini = FastAPI()
+    mini.include_router(pdf_router)
+    with TestClient(mini) as client:
+        spec = client.get("/openapi.json").json()
+
+    post = spec["paths"]["/extract-pdf"]["post"]
+    assert post.get("operationId") == "extractPdf"
+    assert "200" in post["responses"]
+    assert post["responses"]["200"].get("description")
+
+    params = post.get("parameters") or []
+    assert any(p.get("name") == "X-Request-ID" and p.get("in") == "header" for p in params)
+
+    ref = post["responses"]["200"]["content"]["application/json"]["schema"]
+    assert "$ref" in ref
+    name = ref["$ref"].split("/")[-1]
+    comp = spec["components"]["schemas"][name]
+    assert "example" in comp or "examples" in str(comp)

@@ -37,6 +37,12 @@ class Settings(BaseSettings):
 
     store_processed_metadata: bool = True
 
+    enable_pdf_extract_endpoint: bool = Field(
+        default=False,
+        alias="ENABLE_PDF_EXTRACT_ENDPOINT",
+        description="Expõe POST /extract-pdf (testes/depuração de extração só-PDF)",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

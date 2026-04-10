@@ -14,6 +14,7 @@ from app.api.deps import (
     SettingsDep,
     XmlProcessorDep,
 )
+from app.api.validators import validate_pdf_bytes
 from app.models.domain import HTTPErrorResponse, InvoiceProcessResponse
 from app.services.invoice_merge import merge_invoice, xml_field_coverage
 from app.services.invoice_type_detection import detect_invoice_type
@@ -60,15 +61,6 @@ def _validate_xml_bytes(data: bytes) -> None:
         raise HTTPException(
             status_code=400, detail=f"XML inválido: {e!s}"
         ) from e
-
-
-def _validate_pdf_bytes(data: bytes) -> None:
-    if not data or len(data) < 5:
-        raise HTTPException(status_code=400, detail="PDF vazio ou muito curto")
-    if not data.startswith(b"%PDF"):
-        raise HTTPException(
-            status_code=400, detail="Arquivo PDF inválido (cabeçalho %PDF ausente)"
-        )
 
 
 @router.post(
@@ -121,7 +113,7 @@ async def process_invoice(
         )
 
     _validate_xml_bytes(xml_bytes)
-    _validate_pdf_bytes(pdf_bytes)
+    validate_pdf_bytes(pdf_bytes)
 
     has_api_key = bool(settings.llm_api_key.strip())
 
