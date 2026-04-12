@@ -1,7 +1,10 @@
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+LlmProvider = Literal["openai", "gemini"]
 
 
 class Settings(BaseSettings):
@@ -22,12 +25,25 @@ class Settings(BaseSettings):
 
     max_upload_bytes: int = Field(default=15 * 1024 * 1024, description="Limite por arquivo")
 
+    llm_provider: LlmProvider = Field(
+        default="openai",
+        alias="LLM_PROVIDER",
+        description="openai (API compatível OpenAI) ou gemini (Google AI Studio)",
+    )
+
     llm_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     llm_base_url: str = Field(
         default="https://api.openai.com/v1",
         alias="OPENAI_BASE_URL",
     )
     llm_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL")
+    gemini_base_url: str = Field(
+        default="https://generativelanguage.googleapis.com",
+        alias="GEMINI_BASE_URL",
+    )
     llm_timeout_seconds: float = 120.0
     llm_max_tokens: int = 4096
     llm_max_input_chars: int = 24_000
@@ -42,6 +58,18 @@ class Settings(BaseSettings):
         alias="ENABLE_PDF_EXTRACT_ENDPOINT",
         description="Expõe POST /extract-pdf (testes/depuração de extração só-PDF)",
     )
+
+    def has_llm_credentials(self) -> bool:
+        if self.llm_provider == "gemini":
+            return bool(self.gemini_api_key.strip())
+        return bool(self.llm_api_key.strip())
+
+    @field_validator("llm_provider", mode="before")
+    @classmethod
+    def normalize_llm_provider(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
 
 
 @lru_cache

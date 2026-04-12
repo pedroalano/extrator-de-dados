@@ -28,8 +28,8 @@ _PROCESS_INVOICE_DESCRIPTION = (
     "Envie **dois arquivos** em `multipart/form-data`: `xml_file` (`.xml`) e `pdf_file` (`.pdf`). "
     "O tipo da nota (NFe ou NFS-e) é detectado pelo XML.\n\n"
     "Cada arquivo deve respeitar o limite configurado em **`MAX_UPLOAD_BYTES`**.\n\n"
-    "Com **`OPENAI_API_KEY`** vazia, o LLM não é usado; o XML segue mapeamento em cache ou padrão por tipo, "
-    "e o PDF usa heurísticas determinísticas quando possível."
+    "Com **`LLM_PROVIDER=openai`** e **`OPENAI_API_KEY`** vazia (ou **`LLM_PROVIDER=gemini`** sem **`GEMINI_API_KEY`**), "
+    "o LLM não é usado; o XML segue mapeamento em cache ou padrão por tipo, e o PDF usa heurísticas determinísticas quando possível."
 )
 
 _PROCESS_INVOICE_RESPONSES: dict[int, dict[str, object]] = {
@@ -115,7 +115,7 @@ async def process_invoice(
     _validate_xml_bytes(xml_bytes)
     validate_pdf_bytes(pdf_bytes)
 
-    has_api_key = bool(settings.llm_api_key.strip())
+    has_api_key = settings.has_llm_credentials()
 
     detected = detect_invoice_type(xml_bytes)
     invoice_type = detected.invoice_type
