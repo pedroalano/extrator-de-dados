@@ -5,7 +5,9 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import Settings, get_settings
 from app.db.repositories import ProcessedInvoiceRepository, XmlMappingRepository
-from app.services.ai_service import AIService, OpenAICompatibleAIService
+from app.services.ai_service import AIService
+from app.services.gemini_ai_service import GeminiAIService
+from app.services.openai_ai_service import OpenAICompatibleAIService
 from app.services.pdf_processor import PdfProcessor
 from app.services.xml_processor import XmlProcessor
 
@@ -23,6 +25,8 @@ DbDep = Annotated[AsyncIOMotorDatabase, Depends(get_db)]
 
 
 def get_ai_service(settings: SettingsDep) -> AIService:
+    if settings.llm_provider == "gemini":
+        return GeminiAIService(settings)
     return OpenAICompatibleAIService(settings)
 
 

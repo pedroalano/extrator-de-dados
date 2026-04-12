@@ -102,7 +102,7 @@ async def extract_pdf(
 
     validate_pdf_bytes(pdf_bytes)
 
-    has_api_key = bool(settings.llm_api_key.strip())
+    has_api_key = settings.has_llm_credentials()
     xml_coverage = simulated_xml_coverage(simulate_xml_complete)
 
     try:

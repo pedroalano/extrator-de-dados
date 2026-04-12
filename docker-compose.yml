@@ -24,9 +24,13 @@ services:
       MONGODB_DB: ${MONGODB_DB:-nfe_processor}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-15728640}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com}
       PDF_CACHE_MAX_ENTRIES: ${PDF_CACHE_MAX_ENTRIES:-256}
       STORE_PROCESSED_METADATA: ${STORE_PROCESSED_METADATA:-true}
       # true por defeito no Compose para testar POST /extract-pdf no Swagger; defina false no .env se quiser desligar
