@@ -4,6 +4,7 @@ import logging
 import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
+from typing import Literal
 
 import fitz
 
@@ -16,6 +17,10 @@ from app.services.prompts import PDF_EXTRACTION_NFE, PDF_EXTRACTION_NFSE
 from app.utils.hashing import sha256_bytes
 
 logger = logging.getLogger(__name__)
+
+PDF_LLM_INPUT_PDF_NOT_IMPLEMENTED = (
+    "pdf_llm_input_mode_pdf_not_implemented: using extracted text"
+)
 
 CNPJ_RE = re.compile(
     r"\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b|\b\d{14}\b"
@@ -51,6 +56,7 @@ class PdfSideData:
     quality_score: float = 0.0
     raw_text: str = ""
     warnings: list[str] = field(default_factory=list)
+    llm_raw: PdfExtractionLLMResponse | None = None
 
 
 def _normalize_cnpj(s: str) -> str:
@@ -173,8 +179,13 @@ class PdfProcessor:
         self._ai = ai
         self._cache: OrderedDict[str, PdfSideData] = OrderedDict()
 
-    def _cache_key(self, pdf_bytes: bytes, invoice_type: InvoiceType) -> str:
-        return f"{invoice_type}:{sha256_bytes(pdf_bytes)}"
+    def _cache_key(
+        self,
+        pdf_bytes: bytes,
+        invoice_type: InvoiceType,
+        llm_input_mode: Literal["text", "pdf"],
+    ) -> str:
+        return f"{invoice_type}:{llm_input_mode}:{sha256_bytes(pdf_bytes)}"
 
     def _cache_get(self, key: str) -> PdfSideData | None:
         if key in self._cache:
@@ -225,8 +236,9 @@ class PdfProcessor:
         has_api_key: bool,
         xml_coverage: dict[str, bool],
         invoice_type: InvoiceType,
+        llm_input_mode: Literal["text", "pdf"] = "text",
     ) -> PdfSideData:
-        key = self._cache_key(pdf_bytes, invoice_type)
+        key = self._cache_key(pdf_bytes, invoice_type, llm_input_mode)
         cached = self._cache_get(key)
         if cached is not None:
             return cached
@@ -236,6 +248,9 @@ class PdfProcessor:
         det = _deterministic_from_text(text, invoice_type)
         det.quality_score = quality
         det.raw_text = text[:5000]
+
+        if llm_input_mode == "pdf":
+            det.warnings.append(PDF_LLM_INPUT_PDF_NOT_IMPLEMENTED)
 
         need_llm = self._need_llm(
             invoice_type=invoice_type,
@@ -260,7 +275,9 @@ class PdfProcessor:
                     response_model=PdfExtractionLLMResponse,
                     max_tokens=4096,
                 )
-                merged = _merge_det_llm(det, _llm_response_to_side(llm_out))
+                merged = _merge_det_llm(
+                    det, _llm_response_to_side(llm_out), llm_raw=llm_out
+                )
                 self._cache_set(key, merged)
                 return merged
             except Exception as e:
@@ -273,7 +290,12 @@ class PdfProcessor:
         return det
 
 
-def _merge_det_llm(det: PdfSideData, llm: PdfSideData) -> PdfSideData:
+def _merge_det_llm(
+    det: PdfSideData,
+    llm: PdfSideData,
+    *,
+    llm_raw: PdfExtractionLLMResponse | None = None,
+) -> PdfSideData:
     def pick_str(a: str | None, b: str | None) -> str | None:
         return a or b
 
@@ -306,4 +328,6 @@ def _merge_det_llm(det: PdfSideData, llm: PdfSideData) -> PdfSideData:
         extraction_mode="llm",
         quality_score=max(det.quality_score, llm.quality_score),
         raw_text=det.raw_text,
+        warnings=list(det.warnings),
+        llm_raw=llm_raw,
     )

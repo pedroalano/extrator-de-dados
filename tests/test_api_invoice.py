@@ -1,5 +1,7 @@
 import pytest
 
+from app.services.pdf_processor import PDF_LLM_INPUT_PDF_NOT_IMPLEMENTED
+
 
 def test_process_invoice_returns_json(client, minimal_nfe_xml: bytes, sample_pdf_bytes: bytes):
     response = client.post(
@@ -11,6 +13,8 @@ def test_process_invoice_returns_json(client, minimal_nfe_xml: bytes, sample_pdf
     )
     assert response.status_code == 200, response.text
     data = response.json()
+    assert "llm_extracted" in data
+    assert data.get("llm_extracted") is None
     assert data["invoice_type"] == "nfe"
     assert data["invoice_number"] == "12345"
     assert data["issuer"]["cnpj"] == "12345678000199"
@@ -20,6 +24,21 @@ def test_process_invoice_returns_json(client, minimal_nfe_xml: bytes, sample_pdf
     assert data["items"][0]["code"] == "001"
     assert "structure_hash" in data
     assert data["extraction_sources"]["xml_mapping"] in ("default", "cached", "llm")
+
+
+def test_process_invoice_pdf_llm_input_pdf_adds_warning(
+    client, minimal_nfe_xml: bytes, sample_pdf_bytes: bytes
+):
+    response = client.post(
+        "/process-invoice",
+        data={"pdf_llm_input": "pdf"},
+        files={
+            "xml_file": ("nfe.xml", minimal_nfe_xml, "application/xml"),
+            "pdf_file": ("danfe.pdf", sample_pdf_bytes, "application/pdf"),
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert PDF_LLM_INPUT_PDF_NOT_IMPLEMENTED in response.json()["warnings"]
 
 
 def test_process_invoice_nfse(client, minimal_nfse_xml: bytes, sample_pdf_bytes: bytes):

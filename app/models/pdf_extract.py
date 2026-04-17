@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.ai_schemas import PdfExtractionLLMResponse
 from app.models.domain import LineItem, Party
 from app.models.invoice_types import InvoiceType
 from app.services.pdf_processor import PdfSideData
@@ -29,6 +30,7 @@ class PdfExtractResponse(BaseModel):
                 "quality_score": 0.72,
                 "raw_text": "DANFE Nota Fiscal N 12345\n...",
                 "warnings": [],
+                "llm_extracted": None,
             }
         }
     )
@@ -47,6 +49,10 @@ class PdfExtractResponse(BaseModel):
     quality_score: float = Field(description="Heurística de qualidade do texto extraído (0–1).")
     raw_text: str = Field(description="Trecho do texto extraído (truncado no processador).")
     warnings: list[str] = Field(default_factory=list)
+    llm_extracted: PdfExtractionLLMResponse | None = Field(
+        default=None,
+        description="JSON estruturado devolvido pelo LLM; preenchido só quando `used_llm` é true.",
+    )
 
 
 def pdf_side_data_to_response(
@@ -67,6 +73,7 @@ def pdf_side_data_to_response(
         quality_score=data.quality_score,
         raw_text=data.raw_text,
         warnings=data.warnings,
+        llm_extracted=data.llm_raw,
     )
 
 

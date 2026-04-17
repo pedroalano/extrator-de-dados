@@ -20,7 +20,11 @@ router = APIRouter(tags=["pdf"])
 
 _EXTRACT_PDF_DESCRIPTION = (
     "Extrai dados **apenas do PDF** (PyMuPDF + heurísticas; LLM opcional conforme qualidade e "
-    "`simulate_xml_complete`). Útil para testes e depuração.\n\n"
+    "`simulate_xml_complete`). O LLM **não** recebe o ficheiro PDF em binário: recebe **texto** extraído "
+    "deterministicamente (PyMuPDF) e devolve JSON; quando o LLM corre, a resposta inclui **`llm_extracted`** "
+    "(objecto com o mesmo schema). Útil para testes e depuração.\n\n"
+    "- **`pdf_llm_input`**: `text` (predefinido) ou `pdf` (envio do PDF ao LLM ainda não implementado; usa texto e pode "
+    "acrescentar aviso em `warnings`).\n\n"
     "**Requer** `ENABLE_PDF_EXTRACT_ENDPOINT=true` na API (caso contrário a rota não é registada).\n\n"
     "- **`simulate_xml_complete`**: se `true`, simula XML com todos os campos preenchidos (afeta quando o LLM "
     "do PDF é acionado); se `false`, simula cobertura XML vazia."
@@ -28,7 +32,10 @@ _EXTRACT_PDF_DESCRIPTION = (
 
 _EXTRACT_PDF_RESPONSES: dict[int | str, dict[str, object]] = {
     200: {
-        "description": "Extração concluída (heurística e/ou LLM conforme parâmetros e `OPENAI_API_KEY`).",
+        "description": (
+            "Extração concluída (heurística e/ou LLM conforme parâmetros e credenciais LLM). "
+            "Com LLM: campo opcional `llm_extracted` com o JSON parseado do modelo."
+        ),
     },
     400: {
         "model": HTTPErrorResponse,
@@ -80,6 +87,18 @@ async def extract_pdf(
             description="Se true, `xml_coverage` simulada com todos os campos; se false, todos vazios."
         ),
     ] = False,
+    pdf_llm_input: Annotated[
+        Literal["text", "pdf"],
+        Query(
+            description=(
+                "Entrada do LLM sobre o PDF: `text` = texto PyMuPDF; `pdf` = reservado (fallback para texto + aviso)."
+            ),
+            openapi_examples={
+                "text": {"summary": "Texto extraído", "value": "text"},
+                "pdf": {"summary": "PDF (fallback)", "value": "pdf"},
+            },
+        ),
+    ] = "text",
     _: Annotated[
         str | None,
         Header(
@@ -112,6 +131,7 @@ async def extract_pdf(
             has_api_key=has_api_key,
             xml_coverage=xml_coverage,
             invoice_type=invoice_type,
+            llm_input_mode=pdf_llm_input,
         )
     except Exception as e:
         logger.exception("Erro ao processar PDF (extract-pdf)")
