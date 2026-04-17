@@ -2,6 +2,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.ai_schemas import PdfExtractionLLMResponse
+
 
 class HTTPErrorResponse(BaseModel):
     """Corpo padrão de erro da API (`HTTPException` / validação FastAPI)."""
@@ -94,6 +96,7 @@ class InvoiceProcessResponse(BaseModel):
                     "xml_mapping": "default",
                     "pdf": "deterministic",
                 },
+                "llm_extracted": None,
             }
         }
     )
@@ -114,3 +117,7 @@ class InvoiceProcessResponse(BaseModel):
 
     field_confidence: dict[str, float] | None = None
     extraction_sources: dict[str, str] | None = None
+    llm_extracted: PdfExtractionLLMResponse | None = Field(
+        default=None,
+        description="JSON estruturado devolvido pelo LLM no PDF; preenchido só quando `used_llm_pdf` é true.",
+    )

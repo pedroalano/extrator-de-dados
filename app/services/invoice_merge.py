@@ -85,6 +85,7 @@ def merge_invoice(
         warnings=warnings,
         extraction_sources=extraction_sources,
         field_confidence=None,
+        llm_extracted=pdf_part.llm_raw,
     )
 
 

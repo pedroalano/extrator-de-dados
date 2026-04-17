@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
 from lxml import etree
 
 from app.api.deps import (
@@ -27,6 +27,8 @@ router = APIRouter(tags=["invoice"])
 _PROCESS_INVOICE_DESCRIPTION = (
     "Envie **dois arquivos** em `multipart/form-data`: `xml_file` (`.xml`) e `pdf_file` (`.pdf`). "
     "O tipo da nota (NFe ou NFS-e) é detectado pelo XML.\n\n"
+    "Campo opcional **`pdf_llm_input`**: `text` (texto extraído com PyMuPDF, predefinido) ou `pdf` (envio do PDF ao LLM ainda "
+    "não implementado; usa texto e pode acrescentar aviso em `warnings`).\n\n"
     "Cada arquivo deve respeitar o limite configurado em **`MAX_UPLOAD_BYTES`**.\n\n"
     "Com **`LLM_PROVIDER=openai`** e **`OPENAI_API_KEY`** vazia (ou **`LLM_PROVIDER=gemini`** sem **`GEMINI_API_KEY`**), "
     "o LLM não é usado; o XML segue mapeamento em cache ou padrão por tipo, e o PDF usa heurísticas determinísticas quando possível."
@@ -89,6 +91,14 @@ async def process_invoice(
     pdf_file: UploadFile = File(
         ..., description="PDF da nota (DANFE, NFS-e ou equivalente)"
     ),
+    pdf_llm_input: Annotated[
+        Literal["text", "pdf"],
+        Form(
+            description=(
+                "Entrada do LLM sobre o PDF: `text` = texto PyMuPDF; `pdf` = reservado (fallback para texto + aviso)."
+            ),
+        ),
+    ] = "text",
 ) -> InvoiceProcessResponse:
     request_id = getattr(request.state, "request_id", None) or str(uuid.uuid4())
 
@@ -143,6 +153,7 @@ async def process_invoice(
             has_api_key=has_api_key,
             xml_coverage=coverage,
             invoice_type=invoice_type,
+            llm_input_mode=pdf_llm_input,
         )
     except Exception as e:
         logger.exception("Erro ao processar PDF")
