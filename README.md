@@ -103,7 +103,7 @@ Exemplos mínimos de XML estão em [`tests/fixtures/minimal_nfe.xml`](tests/fixt
 
 ### `POST /extract-pdf` (opcional)
 
-Extracção **apenas do PDF** (PyMuPDF + heurísticas; LLM opcional). A rota **só é registada** se `ENABLE_PDF_EXTRACT_ENDPOINT=true` (reiniciar a API após alterar a variável). No Swagger, aparece na tag **pdf**.
+Extracção **apenas do PDF** (texto com pdfplumber e fallback PyMuPDF, mais heurísticas; LLM opcional). A rota **só é registada** se `ENABLE_PDF_EXTRACT_ENDPOINT=true` (reiniciar a API após alterar a variável). No Swagger, aparece na tag **pdf**.
 
 Query parameters:
 
@@ -125,12 +125,12 @@ curl -s -X POST "http://localhost:8000/extract-pdf?invoice_type=nfe&skip_llm=fal
 
 1. **Detecção:** o XML é classificado como NFe ou NFS-e (tags raiz, namespaces, presença de prestador/tomador/serviço/ISS, etc.).
 2. **XML:** calcula fingerprint estrutural **por tipo** → busca `xml_mappings` no Mongo (`structure_hash` + `invoice_type`) → se não existir e houver credenciais LLM para o provedor activo, envia amostra do XML ao modelo com prompt específico (NFe ou NFS-e); persiste o mapeamento; extrai dados com `lxml`.
-3. **PDF:** extrai texto com **PyMuPDF**; heurística de qualidade (com reforço para NFS-e: ISS, serviço, etc.); se necessário (e houver credenciais), envia texto ao LLM com prompt NFe ou NFS-e.
+3. **PDF:** extrai texto com **pdfplumber** (layout) e **PyMuPDF** como fallback se o texto vier demasiado curto; heurística de qualidade (com reforço para NFS-e: ISS, serviço, etc.); se necessário (e houver credenciais), envia texto ao LLM com prompt NFe ou NFS-e.
 4. **Fusão:** prioriza dados do XML; PDF preenche lacunas (incluindo `iss` no PDF quando o XML não trouxer).
 
 Documentos antigos em `xml_mappings` **sem** `invoice_type` são tratados como **NFe** na leitura.
 
-**OCR** não está incluído: PDFs somente imagem tendem a baixa qualidade de texto e o LLM receberá pouco conteúdo. (Extensão futura: **pdfplumber** para tabelas em layouts muito tabulares.)
+**OCR** não está incluído: PDFs somente imagem tendem a baixa qualidade de texto e o LLM receberá pouco conteúdo.
 
 ## Testes
 
