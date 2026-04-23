@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["pdf"])
 
 _EXTRACT_PDF_DESCRIPTION = (
-    "Extrai dados **apenas do PDF** (PyMuPDF + heurísticas; LLM opcional conforme qualidade e "
+    "Extrai dados **apenas do PDF** (texto com **pdfplumber** e fallback **PyMuPDF**, mais heurísticas; LLM opcional conforme qualidade e "
     "`simulate_xml_complete`). O LLM **não** recebe o ficheiro PDF em binário: recebe **texto** extraído "
-    "deterministicamente (PyMuPDF) e devolve JSON; quando o LLM corre, a resposta inclui **`llm_extracted`** "
+    "deterministicamente e devolve JSON; quando o LLM corre, a resposta inclui **`llm_extracted`** "
     "(objecto com o mesmo schema). Útil para testes e depuração.\n\n"
     "- **`pdf_llm_input`**: `text` (predefinido) ou `pdf` (envio do PDF ao LLM ainda não implementado; usa texto e pode "
     "acrescentar aviso em `warnings`).\n\n"
@@ -91,7 +91,7 @@ async def extract_pdf(
         Literal["text", "pdf"],
         Query(
             description=(
-                "Entrada do LLM sobre o PDF: `text` = texto PyMuPDF; `pdf` = reservado (fallback para texto + aviso)."
+                "Entrada do LLM sobre o PDF: `text` = texto extraído (pdfplumber + fallback PyMuPDF); `pdf` = reservado (fallback para texto + aviso)."
             ),
             openapi_examples={
                 "text": {"summary": "Texto extraído", "value": "text"},

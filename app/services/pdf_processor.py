@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import logging
 import re
 from collections import OrderedDict
@@ -7,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 import fitz
+import pdfplumber
 
 from app.config import Settings
 from app.models.ai_schemas import PdfExtractionLLMResponse
@@ -33,6 +35,29 @@ NFSE_NUM_RE = re.compile(
     r"(?:NFS-?e|Nota\s+Fiscal\s+de\s+Servi[cç]o|RPS|N[ºo°]\s*(?:da\s*)?(?:NF|Nota)).*?(\d{6,12})",
     re.IGNORECASE | re.DOTALL,
 )
+
+# Texto abaixo disto costuma indicar pdfplumber falhou (PDF escaneado, etc.).
+_PDF_TEXT_FALLBACK_MIN_CHARS = 60
+
+
+def _extract_text_pdfplumber(pdf_bytes: bytes) -> str:
+    parts: list[str] = []
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            t = page.extract_text(layout=True) or ""
+            parts.append(t)
+    return "\n\n".join(parts)
+
+
+def _extract_text_pymupdf(pdf_bytes: bytes) -> str:
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        parts: list[str] = []
+        for page in doc:
+            parts.append(page.get_text() or "")
+        return "\n".join(parts)
+    finally:
+        doc.close()
 
 
 def _party_meaningful(p: Party | None) -> bool:
@@ -200,15 +225,14 @@ class PdfProcessor:
             self._cache.popitem(last=False)
 
     def extract_text(self, pdf_bytes: bytes) -> tuple[str, int]:
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        try:
-            parts: list[str] = []
-            for page in doc:
-                parts.append(page.get_text() or "")
-            text = "\n".join(parts)
-            return text, len(pdf_bytes)
-        finally:
-            doc.close()
+        size = len(pdf_bytes)
+        primary = _extract_text_pdfplumber(pdf_bytes)
+        if len(primary.strip()) >= _PDF_TEXT_FALLBACK_MIN_CHARS:
+            return primary, size
+        fallback = _extract_text_pymupdf(pdf_bytes)
+        if len(fallback.strip()) > len(primary.strip()):
+            return fallback, size
+        return (primary if primary.strip() else fallback), size
 
     def _xml_covers_minimum(self, xml_has: dict[str, bool]) -> bool:
         return all(xml_has.values())

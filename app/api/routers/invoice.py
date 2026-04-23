@@ -27,7 +27,7 @@ router = APIRouter(tags=["invoice"])
 _PROCESS_INVOICE_DESCRIPTION = (
     "Envie **dois arquivos** em `multipart/form-data`: `xml_file` (`.xml`) e `pdf_file` (`.pdf`). "
     "O tipo da nota (NFe ou NFS-e) é detectado pelo XML.\n\n"
-    "Campo opcional **`pdf_llm_input`**: `text` (texto extraído com PyMuPDF, predefinido) ou `pdf` (envio do PDF ao LLM ainda "
+    "Campo opcional **`pdf_llm_input`**: `text` (texto extraído do PDF com pdfplumber e fallback PyMuPDF, predefinido) ou `pdf` (envio do PDF ao LLM ainda "
     "não implementado; usa texto e pode acrescentar aviso em `warnings`).\n\n"
     "Cada arquivo deve respeitar o limite configurado em **`MAX_UPLOAD_BYTES`**.\n\n"
     "Com **`LLM_PROVIDER=openai`** e **`OPENAI_API_KEY`** vazia (ou **`LLM_PROVIDER=gemini`** sem **`GEMINI_API_KEY`**), "
@@ -95,7 +95,7 @@ async def process_invoice(
         Literal["text", "pdf"],
         Form(
             description=(
-                "Entrada do LLM sobre o PDF: `text` = texto PyMuPDF; `pdf` = reservado (fallback para texto + aviso)."
+                "Entrada do LLM sobre o PDF: `text` = texto extraído (pdfplumber + fallback PyMuPDF); `pdf` = reservado (fallback para texto + aviso)."
             ),
         ),
     ] = "text",
