@@ -11,11 +11,15 @@ import fitz
 import pdfplumber
 
 from app.config import Settings
-from app.models.ai_schemas import PdfExtractionLLMResponse
+from app.models.ai_schemas import (
+    PdfExtractionLLMResponse,
+    PdfPartyExtract,
+    PdfTaxesExtract,
+)
 from app.models.domain import LineItem, Party
 from app.models.invoice_types import InvoiceType
 from app.services.ai_service import AIService
-from app.services.prompts import PDF_EXTRACTION_NFE, PDF_EXTRACTION_NFSE
+from app.services.prompts import PDF_EXTRACTION_MASTER, PDF_EXTRACTION_MASTER_NFSE_HINT
 from app.utils.hashing import sha256_bytes
 
 logger = logging.getLogger(__name__)
@@ -158,41 +162,62 @@ def _safe_float(v: object) -> float | None:
         return None
 
 
+def _party_from_extract(p: PdfPartyExtract | None) -> Party | None:
+    if p is None:
+        return None
+    if not (p.name or p.cnpj or p.cpf or p.address):
+        return None
+    return Party(name=p.name, cnpj=p.cnpj, cpf=p.cpf, address=p.address)
+
+
+def _taxes_note_from_llm(data: PdfExtractionLLMResponse) -> str | None:
+    t = data.taxes
+    if t is None:
+        return None
+    if isinstance(t, PdfTaxesExtract):
+        return t.note
+    if isinstance(t, dict):
+        raw = t.get("note")
+        return raw if isinstance(raw, str) else None
+    return None
+
+
+def _iss_from_llm(data: PdfExtractionLLMResponse) -> float | None:
+    t = data.taxes
+    if t is None:
+        return None
+    if isinstance(t, PdfTaxesExtract):
+        return t.iss
+    if isinstance(t, dict):
+        return _safe_float(t.get("iss"))
+    return None
+
+
 def _llm_response_to_side(data: PdfExtractionLLMResponse) -> PdfSideData:
+    doc = data.document_info
     items: list[LineItem] = []
-    for p in data.items:
-        if not isinstance(p, dict):
-            continue
+    for row in data.items:
         items.append(
             LineItem(
-                code=p.get("code") if isinstance(p.get("code"), str) else None,
-                description=p.get("description")
-                if isinstance(p.get("description"), str)
-                else None,
-                quantity=_safe_float(p.get("quantity")),
-                unit_value=_safe_float(p.get("unit_value")),
-                total_value=_safe_float(p.get("total_value")),
+                code=row.code,
+                description=row.description,
+                ncm=row.ncm,
+                quantity=_safe_float(row.quantity),
+                unit=row.unit,
+                unit_value=_safe_float(row.unit_price),
+                total_value=_safe_float(row.total_price),
             )
         )
+    total_value = data.totals.total_value if data.totals else None
     return PdfSideData(
-        issuer=Party(
-            name=data.issuer_name,
-            cnpj=data.issuer_cnpj,
-        )
-        if (data.issuer_name or data.issuer_cnpj)
-        else None,
-        receiver=Party(
-            name=data.receiver_name,
-            cnpj=data.receiver_cnpj,
-        )
-        if (data.receiver_name or data.receiver_cnpj)
-        else None,
-        invoice_number=data.invoice_number,
-        date=data.date,
-        total_value=data.total_value,
+        issuer=_party_from_extract(data.issuer),
+        receiver=_party_from_extract(data.receiver),
+        invoice_number=doc.invoice_number if doc else None,
+        date=doc.date if doc else None,
+        total_value=total_value,
         items=items,
-        taxes_note=data.taxes_note,
-        iss=data.iss,
+        taxes_note=_taxes_note_from_llm(data),
+        iss=_iss_from_llm(data),
         used_llm=True,
         extraction_mode="llm",
     )
@@ -286,9 +311,9 @@ class PdfProcessor:
         if need_llm and skip_llm:
             need_llm = False
 
-        system_prompt = (
-            PDF_EXTRACTION_NFE if invoice_type == "nfe" else PDF_EXTRACTION_NFSE
-        )
+        system_prompt = PDF_EXTRACTION_MASTER
+        if invoice_type == "nfse":
+            system_prompt = f"{PDF_EXTRACTION_MASTER}\n\n{PDF_EXTRACTION_MASTER_NFSE_HINT}"
 
         if need_llm and has_api_key:
             try:
