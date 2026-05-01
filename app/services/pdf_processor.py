@@ -296,7 +296,8 @@ class PdfProcessor:
         quality = _heuristic_quality(text, size, invoice_type)
         det = _deterministic_from_text(text, invoice_type)
         det.quality_score = quality
-        det.raw_text = text[:5000]
+        max_raw = self._settings.pdf_raw_text_max_chars
+        det.raw_text = text[:max_raw]
 
         if llm_input_mode == "pdf":
             det.warnings.append(PDF_LLM_INPUT_PDF_NOT_IMPLEMENTED)

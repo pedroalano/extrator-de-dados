@@ -47,7 +47,12 @@ class PdfExtractResponse(BaseModel):
     used_llm: bool = Field(description="Se o LLM foi usado nesta extração PDF.")
     extraction_mode: str = Field(description="`deterministic` ou `llm`.")
     quality_score: float = Field(description="Heurística de qualidade do texto extraído (0–1).")
-    raw_text: str = Field(description="Trecho do texto extraído (truncado no processador).")
+    raw_text: str = Field(
+        description=(
+            "Texto extraído do PDF para depuração; truncado ao máximo configurado por "
+            "`PDF_RAW_TEXT_MAX_CHARS` (por omissão 100000 caracteres)."
+        ),
+    )
     warnings: list[str] = Field(default_factory=list)
     llm_extracted: PdfExtractionLLMResponse | None = Field(
         default=None,
