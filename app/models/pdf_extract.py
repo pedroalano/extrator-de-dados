@@ -22,6 +22,7 @@ class PdfExtractResponse(BaseModel):
                 "invoice_number": "12345",
                 "date": "15/01/2024",
                 "total_value": 20.0,
+                "liquid_value": None,
                 "items": [],
                 "taxes_note": None,
                 "iss": None,
@@ -41,6 +42,7 @@ class PdfExtractResponse(BaseModel):
     invoice_number: str | None = None
     date: str | None = None
     total_value: float | None = None
+    liquid_value: float | None = None
     items: list[LineItem] = Field(default_factory=list)
     taxes_note: str | None = None
     iss: float | None = None
@@ -70,6 +72,7 @@ def pdf_side_data_to_response(
         invoice_number=data.invoice_number,
         date=data.date,
         total_value=data.total_value,
+        liquid_value=data.liquid_value,
         items=data.items,
         taxes_note=data.taxes_note,
         iss=data.iss,

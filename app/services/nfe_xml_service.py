@@ -33,6 +33,7 @@ def default_nfe_xpath_mapping() -> XPathDiscoveryLLMResponse:
         invoice_number="//*[local-name()='ide']/*[local-name()='nNF']/text()",
         date="//*[local-name()='ide']/*[local-name()='dhEmi']/text() | //*[local-name()='ide']/*[local-name()='dEmi']/text()",
         total_value="//*[local-name()='ICMSTot']/*[local-name()='vNF']/text() | //*[local-name()='total']/*[local-name()='ICMSTot']/*[local-name()='vNF']/text()",
+        liquid_value="",
         products_container="//*[local-name()='det']",
         taxes_root="//*[local-name()='total'][1]",
         product_inner=ProductInnerXPaths(),
@@ -56,6 +57,11 @@ def extract_nfe_with_mapping(
     taxes_n = _xpath_first_element(root, m.taxes_root)
     taxes = _taxes_from_total_node(taxes_n)
 
+    lv_expr = (m.liquid_value or "").strip()
+    liquid_value = (
+        _parse_decimal(_xpath_first_text(root, lv_expr)) if lv_expr else None
+    )
+
     return XmlProcessResult(
         invoice_type="nfe",
         issuer=_party_from_node(issuer_n),
@@ -67,6 +73,7 @@ def extract_nfe_with_mapping(
         taxes=taxes,
         structure_hash="",
         used_llm=False,
+        liquid_value=liquid_value,
     )
 
 

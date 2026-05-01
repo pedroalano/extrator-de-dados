@@ -23,6 +23,10 @@ class XPathDiscoveryLLMResponse(BaseModel):
     invoice_number: str = Field(description="XPath ao texto nNF")
     date: str = Field(description="XPath ao texto dhEmi ou dEmi")
     total_value: str = Field(description="XPath ao texto vNF")
+    liquid_value: str = Field(
+        default="",
+        description="XPath opcional ao valor líquido da NF se existir tag dedicada; vazio = omitir",
+    )
     products_container: str = Field(
         description="XPath que retorna cada nó de item (det)"
     )
@@ -83,6 +87,10 @@ class NfseXPathMapping(BaseModel):
     iss_total: str = Field(
         default=".//*[local-name()='ValorIss']/text()",
         description="XPath (preferencialmente relativo a taxes_root) ao ISS",
+    )
+    liquid_value: str = Field(
+        default="",
+        description="XPath opcional ao valor líquido da NFS-e (ex. ValorLiquido); vazio = omitir",
     )
     service_inner: ServiceInnerXPaths = Field(default_factory=ServiceInnerXPaths)
 
@@ -149,6 +157,10 @@ class PdfTotalsExtract(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     total_value: float | None = None
+    liquid_value: float | None = Field(
+        default=None,
+        description="Valor líquido da nota quando distinto do total bruto (ex. NFS-e após retenções).",
+    )
 
 
 class PdfExtractionLLMResponse(BaseModel):

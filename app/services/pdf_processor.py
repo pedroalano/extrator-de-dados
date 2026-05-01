@@ -35,10 +35,23 @@ DATE_RE = re.compile(
     r"\b\d{2}/\d{2}/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b"
 )
 MONEY_RE = re.compile(r"R\$\s*[\d\.\s]+,\d{2}", re.IGNORECASE)
-NFSE_NUM_RE = re.compile(
-    r"(?:NFS-?e|Nota\s+Fiscal\s+de\s+Servi[cç]o|RPS|N[ºo°]\s*(?:da\s*)?(?:NF|Nota)).*?(\d{6,12})",
+
+_NFSE_NUM_NEAR_LABEL = re.compile(r"(?is)N[uú]mero\s*:\s*[\s\n]*(\d{4,12})\b")
+_NFSE_NFS_E_LINE = re.compile(r"(?is)NFS[- ]?E\s*N[ºo°.]?\s*(\d{4,12})\b")
+NFSE_NUM_FALLBACK = re.compile(
+    r"(?:NFS-?e|Nota\s+Fiscal\s+de\s+Servi[cç]o|RPS|N[ºo°]\s*(?:da\s*)?(?:NF|Nota))"
+    r".*?(\d{5,12})\b",
     re.IGNORECASE | re.DOTALL,
 )
+
+
+def _nfse_invoice_number_from_text(text: str) -> str | None:
+    for rx in (_NFSE_NUM_NEAR_LABEL, _NFSE_NFS_E_LINE):
+        m = rx.search(text)
+        if m:
+            return m.group(1)
+    m = NFSE_NUM_FALLBACK.search(text)
+    return m.group(1) if m else None
 
 # Texto abaixo disto costuma indicar pdfplumber falhou (PDF escaneado, etc.).
 _PDF_TEXT_FALLBACK_MIN_CHARS = 60
@@ -77,6 +90,7 @@ class PdfSideData:
     invoice_number: str | None = None
     date: str | None = None
     total_value: float | None = None
+    liquid_value: float | None = None
     items: list[LineItem] = field(default_factory=list)
     taxes_note: str | None = None
     iss: float | None = None
@@ -131,14 +145,14 @@ def _deterministic_from_text(text: str, invoice_type: InvoiceType) -> PdfSideDat
     dt = dates[0] if dates else None
 
     if invoice_type == "nfse":
-        nf_match = NFSE_NUM_RE.search(text)
+        inv_num = _nfse_invoice_number_from_text(text)
     else:
         nf_match = re.search(
             r"(?:N[ºo°]\s*(?:da\s*)?(?:NF|Nota)|Nota Fiscal).*?(\d{6,10})",
             text,
             re.IGNORECASE | re.DOTALL,
         )
-    inv_num = nf_match.group(1) if nf_match else None
+        inv_num = nf_match.group(1) if nf_match else None
 
     return PdfSideData(
         issuer=Party(cnpj=issuer_cnpj) if issuer_cnpj else None,
@@ -208,13 +222,16 @@ def _llm_response_to_side(data: PdfExtractionLLMResponse) -> PdfSideData:
                 total_value=_safe_float(row.total_price),
             )
         )
-    total_value = data.totals.total_value if data.totals else None
+    totals = data.totals
+    total_value = totals.total_value if totals else None
+    liquid_value = totals.liquid_value if totals else None
     return PdfSideData(
         issuer=_party_from_extract(data.issuer),
         receiver=_party_from_extract(data.receiver),
         invoice_number=doc.invoice_number if doc else None,
         date=doc.date if doc else None,
         total_value=total_value,
+        liquid_value=liquid_value,
         items=items,
         taxes_note=_taxes_note_from_llm(data),
         iss=_iss_from_llm(data),
@@ -365,12 +382,33 @@ def _merge_det_llm(
 
     items = llm.items if llm.items else det.items
     iss = llm.iss if llm.iss is not None else det.iss
+
+    if llm.used_llm:
+        invoice_number = llm.invoice_number or det.invoice_number
+        date = llm.date or det.date
+        total_value = (
+            llm.total_value if llm.total_value is not None else det.total_value
+        )
+        liquid_value = (
+            llm.liquid_value if llm.liquid_value is not None else det.liquid_value
+        )
+    else:
+        invoice_number = pick_str(det.invoice_number, llm.invoice_number)
+        date = pick_str(det.date, llm.date)
+        total_value = (
+            det.total_value if det.total_value is not None else llm.total_value
+        )
+        liquid_value = (
+            det.liquid_value if det.liquid_value is not None else llm.liquid_value
+        )
+
     return PdfSideData(
         issuer=pick_party(det.issuer, llm.issuer),
         receiver=pick_party(det.receiver, llm.receiver),
-        invoice_number=pick_str(det.invoice_number, llm.invoice_number),
-        date=pick_str(det.date, llm.date),
-        total_value=det.total_value if det.total_value is not None else llm.total_value,
+        invoice_number=invoice_number,
+        date=date,
+        total_value=total_value,
+        liquid_value=liquid_value,
         items=items,
         taxes_note=llm.taxes_note,
         iss=iss,

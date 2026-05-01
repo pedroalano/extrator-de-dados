@@ -28,6 +28,7 @@ class XmlProcessResult:
     structure_hash: str
     used_llm: bool
     mapping_source: str = "default"  # cached | llm | default
+    liquid_value: float | None = None
 
 
 def _xpath_first_text(root: etree._Element, xpath_expr: str) -> str | None:

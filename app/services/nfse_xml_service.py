@@ -64,6 +64,11 @@ def extract_nfse_with_mapping(root: etree._Element, m: NfseXPathMapping) -> XmlP
 
     iss_val, raw_tax = _iss_from_mapping(root, m)
 
+    lv_expr = (m.liquid_value or "").strip()
+    liquid_value = (
+        _parse_decimal(_xpath_first_text(root, lv_expr)) if lv_expr else None
+    )
+
     return XmlProcessResult(
         invoice_type="nfse",
         issuer=_party_from_node(prestador_n),
@@ -75,6 +80,7 @@ def extract_nfse_with_mapping(root: etree._Element, m: NfseXPathMapping) -> XmlP
         taxes=TaxesSummary(iss=iss_val, raw=raw_tax),
         structure_hash="",
         used_llm=False,
+        liquid_value=liquid_value,
     )
 
 
