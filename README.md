@@ -56,6 +56,7 @@ Ver [`.env.example`](.env.example). Principais:
 | `GEMINI_BASE_URL` | Base URL da API Gemini |
 | `MAX_UPLOAD_BYTES` | Tamanho máximo por arquivo |
 | `PDF_CACHE_MAX_ENTRIES` | LRU em memória para resultados de PDF (por tipo + hash do arquivo) |
+| `PDF_RAW_TEXT_MAX_CHARS` | Máximo de caracteres do texto extraído do PDF incluídos em `raw_text` (resposta só-PDF e fusão; omissão: 100000) |
 | `STORE_PROCESSED_METADATA` | Gravar metadados em `processed_invoices` |
 | `ENABLE_PDF_EXTRACT_ENDPOINT` | Se `true`, regista `POST /extract-pdf` (só PDF, testes/depuração) |
 | `TESTING` | `true` desliga Mongo no lifespan (pytest) |
@@ -71,6 +72,7 @@ Sem credenciais válidas para o **provedor activo**, o LLM não é chamado; o XM
 
 - `xml_file`: arquivo `.xml` (NFe ou NFS-e)
 - `pdf_file`: arquivo `.pdf`
+- `pdf_llm_input` (opcional): `text` (predefinido) ou `pdf` — como o LLM consome o PDF: texto extraído (pdfplumber + fallback PyMuPDF) ou modo reservado (`pdf`: envio binário ao LLM ainda não implementado; usa texto e pode acrescentar aviso em `warnings`)
 
 #### Exemplo com curl
 
@@ -78,7 +80,8 @@ Sem credenciais válidas para o **provedor activo**, o LLM não é chamado; o XM
 curl -s -X POST "http://localhost:8000/process-invoice" \
   -H "X-Request-ID: meu-id-opcional" \
   -F "xml_file=@/caminho/nota.xml;type=application/xml" \
-  -F "pdf_file=@/caminho/danfe.pdf;type=application/pdf"
+  -F "pdf_file=@/caminho/danfe.pdf;type=application/pdf" \
+  -F "pdf_llm_input=text"
 ```
 
 #### Resposta JSON (schema unificado)
@@ -89,13 +92,16 @@ curl -s -X POST "http://localhost:8000/process-invoice" \
 | `issuer` / `receiver` | Emitente/prestador e destinatário/tomador |
 | `items` | Lista de linhas: produtos (NFe) ou serviços (NFS-e) |
 | `total_value` | Valor total |
+| `liquid_value` | Valor líquido da nota quando existir e for distinto do total bruto |
 | `taxes` | `icms`, `ipi`, `iss`, `pis`, `cofins`, etc. (o que existir no documento) |
 | `date` | Data de emissão (ou competência, conforme XML) |
 | `invoice_number` | Número da nota |
 | `structure_hash` | Fingerprint estrutural do XML (inclui o tipo) |
 | `used_llm_xml` / `used_llm_pdf` | Se o LLM foi usado em cada etapa |
 | `warnings` | Avisos (ex.: falha parcial no PDF) |
+| `field_confidence` | Opcional: mapa campo → confiança numérica quando disponível |
 | `extraction_sources` | Origem do mapeamento XML (`cached` / `llm` / `default`) e do PDF (`deterministic` / `llm`) |
+| `llm_extracted` | JSON estruturado devolvido pelo LLM na etapa PDF; preenchido só quando `used_llm_pdf` é true |
 
 **Breaking change:** o campo `products` foi substituído por **`items`** na resposta.
 
@@ -110,13 +116,16 @@ Query parameters:
 - `invoice_type`: `nfe` ou `nfse` (prompts e heurísticas)
 - `skip_llm`: se `true`, não chama o LLM no PDF
 - `simulate_xml_complete`: simula cobertura XML completa ou vazia (afecta quando o LLM do PDF é acionado)
+- `pdf_llm_input`: `text` (predefinido) ou `pdf` — mesma semântica que em `/process-invoice` (`pdf` reservado; usa texto extraído)
 
 Body: `multipart/form-data` com `pdf_file` (`.pdf`).
+
+Na resposta, o campo `raw_text` é truncado ao máximo definido por **`PDF_RAW_TEXT_MAX_CHARS`**.
 
 #### Exemplo com curl
 
 ```bash
-curl -s -X POST "http://localhost:8000/extract-pdf?invoice_type=nfe&skip_llm=false&simulate_xml_complete=false" \
+curl -s -X POST "http://localhost:8000/extract-pdf?invoice_type=nfe&skip_llm=false&simulate_xml_complete=false&pdf_llm_input=text" \
   -H "X-Request-ID: debug-pdf" \
   -F "pdf_file=@/caminho/danfe.pdf;type=application/pdf"
 ```
