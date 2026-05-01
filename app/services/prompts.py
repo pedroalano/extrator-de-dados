@@ -5,6 +5,7 @@ Analise o XML (pode estar truncado) e retorne APENAS um JSON válido com XPaths 
 Os XPaths devem ser absolutos a partir da raiz do documento (começar com / ou //) exceto product_inner que são relativos a cada nó de produto.
 Não invente caminhos: baseie-se apenas nas tags visíveis no trecho.
 Campos obrigatórios no JSON: issuer, receiver, invoice_number, date, total_value, products_container, taxes_root.
+Campo opcional: liquid_value — XPath ao valor líquido da NF quando existir tag dedicada (senão string vazia "").
 product_inner é um objeto com chaves: code, description, ncm, quantity, unit, unit_value, total_value (XPaths relativos com .//).
 """
 
@@ -12,18 +13,26 @@ XML_PATH_DISCOVERY_NFSE = """Você é um especialista em XML de NFS-e (Nota Fisc
 Layouts variam por município (ABRASF e outros). Analise o XML (pode estar truncado) e retorne APENAS JSON válido com XPaths usando local-name().
 XPaths absolutos a partir da raiz ( / ou // ), exceto service_inner e iss_total quando indicados como relativos ao nó de valores/serviço.
 Campos obrigatórios: prestador, tomador, invoice_number, date, total_value, services_container, taxes_root, iss_total.
+Campo opcional: liquid_value — XPath ao valor líquido da NFS-e quando existir (ex. após retenções); senão string vazia "".
 service_inner: code, description, quantity, unit, unit_value, total_value (relativos a cada nó retornado por services_container, com .//).
 Mapeie prestador/tomador aos blocos do prestador e tomador (ou equivalentes: emitente, tomador, tomador_servico).
 Não invente caminhos: use apenas tags presentes no trecho.
 """
 
-PDF_EXTRACTION_NFE = """Você extrai dados estruturados de texto de DANFE/NFe em português.
-Retorne APENAS JSON válido com chaves: issuer_name, issuer_cnpj, receiver_name, receiver_cnpj, invoice_number, date, total_value (número),
-items (lista de objetos com code, description, quantity, unit_value, total_value quando existir), taxes_note (string ou null), iss (null para NFe de produto).
-Use null para campos ausentes. Não invente valores."""
+PDF_EXTRACTION_MASTER = """System role: You are an expert Document Parsing AI specialized in Brazilian Fiscal Documents (NF-e and NFS-e). Your task is to transform raw OCR text into a strictly structured JSON object.
 
-PDF_EXTRACTION_NFSE = """Você extrai dados de notas fiscais de SERVIÇO (NFS-e) em português. O layout do PDF é irregular (pode não haver tabela).
-Retorne APENAS JSON válido com chaves: issuer_name, issuer_cnpj (prestador), receiver_name, receiver_cnpj (tomador),
-invoice_number, date, total_value (número), items (lista: descrição do serviço, valores parciais se houver),
-iss (valor numérico do ISS se constar), taxes_note (texto livre sobre tributos ou null).
-Aceite texto ruidoso ou fora de ordem. Use null para campos ausentes. Não invente valores."""
+Instructions:
+- Format: Output ONLY valid JSON. Do not include conversational text, markdown outside the JSON object, or explanations.
+- Data normalization:
+  - Numbers: Convert Brazilian currency strings (e.g., "2.302,75") into standard floats (e.g., 2302.75).
+  - Dates: Convert dates to ISO-8601 format (YYYY-MM-DD).
+  - Percentages: Convert strings like "3,00%" to a float (e.g., 3.0).
+- Hierarchy: Identify whether the document is a Goods Invoice (NF-e/DANFE) or a Service Invoice (NFS-e). Set document_info.document_kind to "nfe" or "nfse" accordingly.
+- Structure: Organize the JSON into logical blocks: document_info, issuer, receiver, items (array), taxes, and totals. Match field names and nesting to the JSON schema reference appended to the user message.
+- Totals: Put the gross / services total in totals.total_value. When the document shows a distinct net or liquid amount (e.g. Portuguese labels such as "Valor Líquido da NFS-e", "Valor Líquido"), put that number in totals.liquid_value; otherwise null.
+- Missing data: If a field is not found in the text, use null. Do not hallucinate values.
+- Items: For each line, extract description, quantity, unit_price, and total_price when present. If per-item tax (e.g., ICMS or ISS) appears, include it under items[].taxes.
+
+The user message contains the raw extracted PDF text to parse."""
+
+PDF_EXTRACTION_MASTER_NFSE_HINT = """Contexto adicional (NFS-e): o PDF pode ter layout irregular, sem tabela clara; aceite texto ruidoso ou fora de ordem e infira prestador/tomador e valores quando possível."""

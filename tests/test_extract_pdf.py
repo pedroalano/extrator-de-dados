@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_ai_service, get_pdf_processor, get_settings_dep
 from app.api.routers.pdf_extract import router as pdf_extract_router
 from app.config import Settings
-from app.models.ai_schemas import PdfExtractionLLMResponse
+from app.models.ai_schemas import PdfDocumentInfo, PdfExtractionLLMResponse
 from app.services.ai_service import AIService
 from app.services.pdf_processor import PDF_LLM_INPUT_PDF_NOT_IMPLEMENTED, PdfProcessor
 
@@ -39,7 +39,9 @@ class _FakePdfExtractLlmAi(AIService):
         self, *, system_prompt, user_prompt, response_model, max_tokens=None, temperature=None
     ):
         if response_model is PdfExtractionLLMResponse:
-            return PdfExtractionLLMResponse(invoice_number="LLM-NF-999")
+            return PdfExtractionLLMResponse(
+                document_info=PdfDocumentInfo(invoice_number="LLM-NF-999")
+            )
         raise NotImplementedError(response_model)
 
 
@@ -115,7 +117,7 @@ def test_extract_pdf_includes_llm_extracted_when_llm_runs(
     assert data["used_llm"] is True
     assert data["extraction_mode"] == "llm"
     assert data["llm_extracted"] is not None
-    assert data["llm_extracted"]["invoice_number"] == "LLM-NF-999"
+    assert data["llm_extracted"]["document_info"]["invoice_number"] == "LLM-NF-999"
 
 
 def test_extract_pdf_llm_with_pdf_input_still_merges_and_warns(
@@ -135,7 +137,7 @@ def test_extract_pdf_llm_with_pdf_input_still_merges_and_warns(
     data = r.json()
     assert data["used_llm"] is True
     assert PDF_LLM_INPUT_PDF_NOT_IMPLEMENTED in data["warnings"]
-    assert data["llm_extracted"]["invoice_number"] == "LLM-NF-999"
+    assert data["llm_extracted"]["document_info"]["invoice_number"] == "LLM-NF-999"
 
 
 def test_extract_pdf_rejects_non_pdf(pdf_extract_client, sample_pdf_bytes: bytes):

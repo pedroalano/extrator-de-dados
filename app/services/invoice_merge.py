@@ -58,6 +58,11 @@ def merge_invoice(
         if xml_part.total_value is not None
         else pdf_part.total_value
     )
+    liquid_value = (
+        xml_part.liquid_value
+        if xml_part.liquid_value is not None
+        else pdf_part.liquid_value
+    )
 
     items = _merge_items(xml_part.items, pdf_part.items)
 
@@ -75,6 +80,7 @@ def merge_invoice(
         issuer=issuer,
         receiver=receiver,
         total_value=total_value,
+        liquid_value=liquid_value,
         items=items,
         taxes=taxes if isinstance(taxes, TaxesSummary) else TaxesSummary(),
         date=date,

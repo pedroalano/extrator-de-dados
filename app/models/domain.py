@@ -65,6 +65,7 @@ class InvoiceProcessResponse(BaseModel):
                     "address": "Av. B, 100",
                 },
                 "total_value": 20.0,
+                "liquid_value": None,
                 "items": [
                     {
                         "code": "001",
@@ -105,6 +106,10 @@ class InvoiceProcessResponse(BaseModel):
     issuer: Party
     receiver: Party
     total_value: float | None = None
+    liquid_value: float | None = Field(
+        default=None,
+        description="Valor líquido da nota quando existir e for distinto do total bruto.",
+    )
     items: list[LineItem] = Field(default_factory=list)
     taxes: TaxesSummary
     date: str | None = None

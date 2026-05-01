@@ -5,12 +5,12 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel
 
-from app.services.prompts import PDF_EXTRACTION_NFE, XML_PATH_DISCOVERY_NFE
+from app.services.prompts import PDF_EXTRACTION_MASTER, XML_PATH_DISCOVERY_NFE
 
 T = TypeVar("T", bound=BaseModel)
 
 XML_PATH_DISCOVERY_SYSTEM = XML_PATH_DISCOVERY_NFE
-PDF_EXTRACTION_SYSTEM = PDF_EXTRACTION_NFE
+PDF_EXTRACTION_SYSTEM = PDF_EXTRACTION_MASTER
 
 
 def render_template(template: str, **kwargs: Any) -> str:

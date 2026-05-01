@@ -51,6 +51,16 @@ class Settings(BaseSettings):
 
     pdf_cache_max_entries: int = 256
 
+    pdf_raw_text_max_chars: int = Field(
+        default=100_000,
+        ge=1,
+        alias="PDF_RAW_TEXT_MAX_CHARS",
+        description=(
+            "Máximo de caracteres do texto extraído do PDF incluídos em `raw_text` "
+            "(resposta API / fusão)."
+        ),
+    )
+
     store_processed_metadata: bool = True
 
     enable_pdf_extract_endpoint: bool = Field(

@@ -11,11 +11,15 @@ import fitz
 import pdfplumber
 
 from app.config import Settings
-from app.models.ai_schemas import PdfExtractionLLMResponse
+from app.models.ai_schemas import (
+    PdfExtractionLLMResponse,
+    PdfPartyExtract,
+    PdfTaxesExtract,
+)
 from app.models.domain import LineItem, Party
 from app.models.invoice_types import InvoiceType
 from app.services.ai_service import AIService
-from app.services.prompts import PDF_EXTRACTION_NFE, PDF_EXTRACTION_NFSE
+from app.services.prompts import PDF_EXTRACTION_MASTER, PDF_EXTRACTION_MASTER_NFSE_HINT
 from app.utils.hashing import sha256_bytes
 
 logger = logging.getLogger(__name__)
@@ -31,10 +35,23 @@ DATE_RE = re.compile(
     r"\b\d{2}/\d{2}/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b"
 )
 MONEY_RE = re.compile(r"R\$\s*[\d\.\s]+,\d{2}", re.IGNORECASE)
-NFSE_NUM_RE = re.compile(
-    r"(?:NFS-?e|Nota\s+Fiscal\s+de\s+Servi[cç]o|RPS|N[ºo°]\s*(?:da\s*)?(?:NF|Nota)).*?(\d{6,12})",
+
+_NFSE_NUM_NEAR_LABEL = re.compile(r"(?is)N[uú]mero\s*:\s*[\s\n]*(\d{4,12})\b")
+_NFSE_NFS_E_LINE = re.compile(r"(?is)NFS[- ]?E\s*N[ºo°.]?\s*(\d{4,12})\b")
+NFSE_NUM_FALLBACK = re.compile(
+    r"(?:NFS-?e|Nota\s+Fiscal\s+de\s+Servi[cç]o|RPS|N[ºo°]\s*(?:da\s*)?(?:NF|Nota))"
+    r".*?(\d{5,12})\b",
     re.IGNORECASE | re.DOTALL,
 )
+
+
+def _nfse_invoice_number_from_text(text: str) -> str | None:
+    for rx in (_NFSE_NUM_NEAR_LABEL, _NFSE_NFS_E_LINE):
+        m = rx.search(text)
+        if m:
+            return m.group(1)
+    m = NFSE_NUM_FALLBACK.search(text)
+    return m.group(1) if m else None
 
 # Texto abaixo disto costuma indicar pdfplumber falhou (PDF escaneado, etc.).
 _PDF_TEXT_FALLBACK_MIN_CHARS = 60
@@ -73,6 +90,7 @@ class PdfSideData:
     invoice_number: str | None = None
     date: str | None = None
     total_value: float | None = None
+    liquid_value: float | None = None
     items: list[LineItem] = field(default_factory=list)
     taxes_note: str | None = None
     iss: float | None = None
@@ -127,14 +145,14 @@ def _deterministic_from_text(text: str, invoice_type: InvoiceType) -> PdfSideDat
     dt = dates[0] if dates else None
 
     if invoice_type == "nfse":
-        nf_match = NFSE_NUM_RE.search(text)
+        inv_num = _nfse_invoice_number_from_text(text)
     else:
         nf_match = re.search(
             r"(?:N[ºo°]\s*(?:da\s*)?(?:NF|Nota)|Nota Fiscal).*?(\d{6,10})",
             text,
             re.IGNORECASE | re.DOTALL,
         )
-    inv_num = nf_match.group(1) if nf_match else None
+        inv_num = nf_match.group(1) if nf_match else None
 
     return PdfSideData(
         issuer=Party(cnpj=issuer_cnpj) if issuer_cnpj else None,
@@ -158,41 +176,65 @@ def _safe_float(v: object) -> float | None:
         return None
 
 
+def _party_from_extract(p: PdfPartyExtract | None) -> Party | None:
+    if p is None:
+        return None
+    if not (p.name or p.cnpj or p.cpf or p.address):
+        return None
+    return Party(name=p.name, cnpj=p.cnpj, cpf=p.cpf, address=p.address)
+
+
+def _taxes_note_from_llm(data: PdfExtractionLLMResponse) -> str | None:
+    t = data.taxes
+    if t is None:
+        return None
+    if isinstance(t, PdfTaxesExtract):
+        return t.note
+    if isinstance(t, dict):
+        raw = t.get("note")
+        return raw if isinstance(raw, str) else None
+    return None
+
+
+def _iss_from_llm(data: PdfExtractionLLMResponse) -> float | None:
+    t = data.taxes
+    if t is None:
+        return None
+    if isinstance(t, PdfTaxesExtract):
+        return t.iss
+    if isinstance(t, dict):
+        return _safe_float(t.get("iss"))
+    return None
+
+
 def _llm_response_to_side(data: PdfExtractionLLMResponse) -> PdfSideData:
+    doc = data.document_info
     items: list[LineItem] = []
-    for p in data.items:
-        if not isinstance(p, dict):
-            continue
+    for row in data.items:
         items.append(
             LineItem(
-                code=p.get("code") if isinstance(p.get("code"), str) else None,
-                description=p.get("description")
-                if isinstance(p.get("description"), str)
-                else None,
-                quantity=_safe_float(p.get("quantity")),
-                unit_value=_safe_float(p.get("unit_value")),
-                total_value=_safe_float(p.get("total_value")),
+                code=row.code,
+                description=row.description,
+                ncm=row.ncm,
+                quantity=_safe_float(row.quantity),
+                unit=row.unit,
+                unit_value=_safe_float(row.unit_price),
+                total_value=_safe_float(row.total_price),
             )
         )
+    totals = data.totals
+    total_value = totals.total_value if totals else None
+    liquid_value = totals.liquid_value if totals else None
     return PdfSideData(
-        issuer=Party(
-            name=data.issuer_name,
-            cnpj=data.issuer_cnpj,
-        )
-        if (data.issuer_name or data.issuer_cnpj)
-        else None,
-        receiver=Party(
-            name=data.receiver_name,
-            cnpj=data.receiver_cnpj,
-        )
-        if (data.receiver_name or data.receiver_cnpj)
-        else None,
-        invoice_number=data.invoice_number,
-        date=data.date,
-        total_value=data.total_value,
+        issuer=_party_from_extract(data.issuer),
+        receiver=_party_from_extract(data.receiver),
+        invoice_number=doc.invoice_number if doc else None,
+        date=doc.date if doc else None,
+        total_value=total_value,
+        liquid_value=liquid_value,
         items=items,
-        taxes_note=data.taxes_note,
-        iss=data.iss,
+        taxes_note=_taxes_note_from_llm(data),
+        iss=_iss_from_llm(data),
         used_llm=True,
         extraction_mode="llm",
     )
@@ -271,7 +313,8 @@ class PdfProcessor:
         quality = _heuristic_quality(text, size, invoice_type)
         det = _deterministic_from_text(text, invoice_type)
         det.quality_score = quality
-        det.raw_text = text[:5000]
+        max_raw = self._settings.pdf_raw_text_max_chars
+        det.raw_text = text[:max_raw]
 
         if llm_input_mode == "pdf":
             det.warnings.append(PDF_LLM_INPUT_PDF_NOT_IMPLEMENTED)
@@ -286,9 +329,9 @@ class PdfProcessor:
         if need_llm and skip_llm:
             need_llm = False
 
-        system_prompt = (
-            PDF_EXTRACTION_NFE if invoice_type == "nfe" else PDF_EXTRACTION_NFSE
-        )
+        system_prompt = PDF_EXTRACTION_MASTER
+        if invoice_type == "nfse":
+            system_prompt = f"{PDF_EXTRACTION_MASTER}\n\n{PDF_EXTRACTION_MASTER_NFSE_HINT}"
 
         if need_llm and has_api_key:
             try:
@@ -339,12 +382,33 @@ def _merge_det_llm(
 
     items = llm.items if llm.items else det.items
     iss = llm.iss if llm.iss is not None else det.iss
+
+    if llm.used_llm:
+        invoice_number = llm.invoice_number or det.invoice_number
+        date = llm.date or det.date
+        total_value = (
+            llm.total_value if llm.total_value is not None else det.total_value
+        )
+        liquid_value = (
+            llm.liquid_value if llm.liquid_value is not None else det.liquid_value
+        )
+    else:
+        invoice_number = pick_str(det.invoice_number, llm.invoice_number)
+        date = pick_str(det.date, llm.date)
+        total_value = (
+            det.total_value if det.total_value is not None else llm.total_value
+        )
+        liquid_value = (
+            det.liquid_value if det.liquid_value is not None else llm.liquid_value
+        )
+
     return PdfSideData(
         issuer=pick_party(det.issuer, llm.issuer),
         receiver=pick_party(det.receiver, llm.receiver),
-        invoice_number=pick_str(det.invoice_number, llm.invoice_number),
-        date=pick_str(det.date, llm.date),
-        total_value=det.total_value if det.total_value is not None else llm.total_value,
+        invoice_number=invoice_number,
+        date=date,
+        total_value=total_value,
+        liquid_value=liquid_value,
         items=items,
         taxes_note=llm.taxes_note,
         iss=iss,
