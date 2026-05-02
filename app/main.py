@@ -9,7 +9,7 @@ from app.api.routers.invoice import router as invoice_router
 from app.api.routers.pdf_extract import router as pdf_extract_router
 from app.config import get_settings
 from app.db.mongo import get_database, mongo_lifespan
-from app.observability import setup_prometheus
+from app.observability import setup_opentelemetry, setup_prometheus
 from app.utils.logging import setup_logging
 from app.utils.request_context import request_id_ctx
 
@@ -100,6 +100,7 @@ def _configure_observability() -> None:
     s = get_settings()
     setup_logging(s.log_level, json_logs=s.log_json)
     setup_prometheus(app, enabled=s.enable_metrics)
+    setup_opentelemetry(app, s)
 
 
 app.include_router(invoice_router)

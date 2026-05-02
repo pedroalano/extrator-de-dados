@@ -15,13 +15,19 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )
 
-    app_name: str = "extrator-de-dados"
+    app_name: str = Field(default="extrator-de-dados", alias="OTEL_SERVICE_NAME")
     debug: bool = False
     testing: bool = Field(default=False, alias="TESTING")
     log_level: str = "INFO"
     log_json: bool = Field(default=True, alias="LOG_JSON")
 
     enable_metrics: bool = Field(default=True, alias="ENABLE_METRICS")
+    enable_otel: bool = Field(default=False, alias="ENABLE_OTEL")
+    otlp_traces_endpoint: str | None = Field(
+        default=None,
+        alias="OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+        description="URL completa para traces OTLP HTTP (ex.: http://collector:4318/v1/traces)",
+    )
 
     mongodb_url: str = Field(default="mongodb://localhost:27017")
     mongodb_db: str = Field(default="nfe_processor")
