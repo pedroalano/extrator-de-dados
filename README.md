@@ -36,6 +36,8 @@ Ou use um arquivo `.env` na raiz (não versionado) com as variáveis necessária
 - API: `http://localhost:8000`
 - Documentação: `http://localhost:8000/docs`
 - Health: `GET /health`
+- Readiness (MongoDB): `GET /ready`
+- Métricas Prometheus (se `ENABLE_METRICS=true`): `GET /metrics`
 
 **Nota:** no `docker-compose.yml`, `ENABLE_PDF_EXTRACT_ENDPOINT` tem **valor por defeito `true`** no serviço `api` (para testar `POST /extract-pdf` no Swagger). No [`.env.example`](.env.example) o defeito é `false`. Para desactivar o endpoint só-PDF em Compose, defina no `.env` `ENABLE_PDF_EXTRACT_ENDPOINT=false`.
 
@@ -61,10 +63,26 @@ Ver [`.env.example`](.env.example). Principais:
 | `ENABLE_PDF_EXTRACT_ENDPOINT` | Se `true`, regista `POST /extract-pdf` (só PDF, testes/depuração) |
 | `TESTING` | `true` desliga Mongo no lifespan (pytest) |
 | `LOG_LEVEL` | Nível de log |
+| `LOG_JSON` | Se `true` (predefinido), logs em JSON em stdout; se `false`, formato texto com `request_id` |
+
+### Observabilidade e logs
+
+| Variável | Descrição |
+|----------|-----------|
+| `ENABLE_METRICS` | Se `true` (predefinido), expõe `GET /metrics` (Prometheus via `prometheus-fastapi-instrumentator`) |
+| `ENABLE_OTEL` | Se `true`, activa instrumentação OpenTelemetry (FastAPI, HTTPX, PyMongo) |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | URL HTTP completa para export de traces OTLP (ex.: `http://tempo:4318/v1/traces`). Com `ENABLE_OTEL=true` e vazio, os spans **não** são enviados (instrumentação activa, export inactivo) |
+| `OTEL_SERVICE_NAME` | Nome do serviço no resource OTEL (`service.name`; corresponde a `app_name` na configuração) |
 
 Sem credenciais válidas para o **provedor activo**, o LLM não é chamado; o XML usa mapeamento em cache ou padrão por tipo.
 
 ## Endpoints
+
+### `GET /health`, `GET /ready`, `GET /metrics`
+
+- **`GET /health`** — Liveness: `{"status":"ok"}` quando a API responde (balanceadores, smoke tests).
+- **`GET /ready`** — Readiness: verifica acesso ao MongoDB (`ping`). Com `TESTING=true` devolve 200 sem consultar a BD. Resposta `503` se o Mongo estiver inacessível.
+- **`GET /metrics`** — Presente só com `ENABLE_METRICS=true`; formato Prometheus para scraping.
 
 ### `POST /process-invoice`
 
@@ -153,8 +171,9 @@ TESTING=1 STORE_PROCESSED_METADATA=false pytest -q
 
 ### Visão em camadas
 
-- **HTTP:** FastAPI, middleware global que propaga `X-Request-ID` (cabeçalho opcional na entrada, sempre presente na resposta).
-- **Roteamento:** [`app/api/routers/invoice.py`](app/api/routers/invoice.py) (`/process-invoice`, `/health`); [`app/api/routers/pdf_extract.py`](app/api/routers/pdf_extract.py) (`/extract-pdf`) condicionado a `ENABLE_PDF_EXTRACT_ENDPOINT`.
+- **HTTP:** FastAPI, middleware global que propaga `X-Request-ID` (cabeçalho opcional na entrada, sempre presente na resposta) e regista pedidos (`http_request` com método, caminho, `status_code`, `duration_ms`).
+- **Roteamento:** [`app/api/routers/invoice.py`](app/api/routers/invoice.py) (`/process-invoice`, `/health`, `/ready`); [`app/api/routers/pdf_extract.py`](app/api/routers/pdf_extract.py) (`/extract-pdf`) condicionado a `ENABLE_PDF_EXTRACT_ENDPOINT`.
+- **Observabilidade:** [`app/observability.py`](app/observability.py) — métricas Prometheus em `/metrics` quando `ENABLE_METRICS`; OpenTelemetry (export OTLP HTTP para traces) quando `ENABLE_OTEL`, com instrumentação FastAPI, HTTPX e PyMongo. Logs estruturados e correlação com pedido em [`app/utils/logging.py`](app/utils/logging.py) e [`app/utils/request_context.py`](app/utils/request_context.py). Arranque em [`app/main.py`](app/main.py) (`_configure_observability`).
 - **Injeção de dependências:** [`app/api/deps.py`](app/api/deps.py) — `Settings`, `AsyncIOMotorDatabase`, repositórios Mongo, `AIService`, `XmlProcessor`, `PdfProcessor`.
 - **Domínio:** detecção de tipo ([`invoice_type_detection.py`](app/services/invoice_type_detection.py)), processamento XML ([`xml_processor.py`](app/services/xml_processor.py), serviços NFe/NFS-e), PDF ([`pdf_processor.py`](app/services/pdf_processor.py)), fusão XML-first ([`invoice_merge.py`](app/services/invoice_merge.py)).
 - **Persistência:** Motor — `XmlMappingRepository`, `ProcessedInvoiceRepository` ([`app/db/repositories.py`](app/db/repositories.py)).
@@ -220,6 +239,7 @@ flowchart LR
 app/
   main.py
   config.py
+  observability.py
   api/
     deps.py
     validators.py
@@ -253,6 +273,7 @@ app/
     xml_sample.py
     hashing.py
     logging.py
+    request_context.py
 main.py
 tests/
   conftest.py
