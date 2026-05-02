@@ -193,3 +193,29 @@ async def process_invoice(
 )
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.get(
+    "/ready",
+    summary="Readiness check",
+    description=(
+        "Verifica se a API pode receber tráfego (MongoDB acessível). "
+        "Em `TESTING=true` (pytest) devolve 200 sem ping à BD. "
+        "Resposta `503` se o Mongo não responder."
+    ),
+    responses={503: {"description": "MongoDB indisponível"}},
+)
+async def ready(settings: SettingsDep) -> dict[str, str]:
+    if settings.testing:
+        return {"status": "ready"}
+    from app.db.mongo import get_client
+
+    try:
+        await get_client().admin.command("ping")
+    except Exception as e:
+        logger.warning("Readiness: MongoDB inacessível: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="database_unavailable",
+        ) from e
+    return {"status": "ready"}

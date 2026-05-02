@@ -21,8 +21,11 @@ def test_openapi_paths_and_operations(openapi_schema: dict):
     paths = openapi_schema["paths"]
     assert "/process-invoice" in paths
     assert "/health" in paths
+    assert "/ready" in paths
+    assert "/metrics" in paths
     assert "post" in paths["/process-invoice"]
     assert "get" in paths["/health"]
+    assert "get" in paths["/ready"]
 
 
 def test_openapi_invoice_tag_and_process_invoice_metadata(openapi_schema: dict):
@@ -60,6 +63,12 @@ def test_openapi_invoice_process_response_has_example(openapi_schema: dict):
 
 def test_openapi_health_summary(openapi_schema: dict):
     get_op = openapi_schema["paths"]["/health"]["get"]
+    assert get_op.get("summary")
+    assert get_op.get("description")
+
+
+def test_openapi_ready_summary(openapi_schema: dict):
+    get_op = openapi_schema["paths"]["/ready"]["get"]
     assert get_op.get("summary")
     assert get_op.get("description")
 
