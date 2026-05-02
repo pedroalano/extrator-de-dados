@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     debug: bool = False
     testing: bool = Field(default=False, alias="TESTING")
     log_level: str = "INFO"
+    log_json: bool = Field(default=True, alias="LOG_JSON")
 
     mongodb_url: str = Field(default="mongodb://localhost:27017")
     mongodb_db: str = Field(default="nfe_processor")

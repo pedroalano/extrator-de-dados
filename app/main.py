@@ -1,3 +1,5 @@
+import logging
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -8,12 +10,15 @@ from app.api.routers.pdf_extract import router as pdf_extract_router
 from app.config import get_settings
 from app.db.mongo import get_database, mongo_lifespan
 from app.utils.logging import setup_logging
+from app.utils.request_context import request_id_ctx
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    setup_logging(settings.log_level)
+    setup_logging(settings.log_level, json_logs=settings.log_json)
     app.state.settings = settings
     if settings.testing:
         yield
@@ -67,11 +72,36 @@ app = FastAPI(
 async def request_id_middleware(request: Request, call_next):
     rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     request.state.request_id = rid
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = rid
+    token = request_id_ctx.set(rid)
+    response = None
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    finally:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        status = response.status_code if response is not None else 500
+        logger.info(
+            "http_request",
+            extra={
+                "http_method": request.method,
+                "path": request.url.path,
+                "status_code": status,
+                "duration_ms": round(elapsed_ms, 3),
+            },
+        )
+        if response is not None:
+            response.headers["X-Request-ID"] = rid
+        request_id_ctx.reset(token)
     return response
+
+
+def _bootstrap_logging() -> None:
+    s = get_settings()
+    setup_logging(s.log_level, json_logs=s.log_json)
 
 
 app.include_router(invoice_router)
 if _settings_at_boot.enable_pdf_extract_endpoint:
     app.include_router(pdf_extract_router)
+
+_bootstrap_logging()
