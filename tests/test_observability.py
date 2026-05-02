@@ -1,8 +1,21 @@
-"""Regressão: correlação de logs e request ID."""
+"""Regressão: readiness, métricas Prometheus e correlação de logs."""
 
 from __future__ import annotations
 
 import logging
+
+
+def test_ready_ok_when_testing(client):
+    r = client.get("/ready")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ready"}
+
+
+def test_metrics_endpoint(client):
+    r = client.get("/metrics")
+    assert r.status_code == 200
+    body = r.text
+    assert "http_requests" in body or "prometheus" in body.lower() or "python_info" in body
 
 
 def test_health_response_includes_request_id_header(client):

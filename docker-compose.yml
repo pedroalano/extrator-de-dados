@@ -24,6 +24,7 @@ services:
       MONGODB_DB: ${MONGODB_DB:-nfe_processor}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_JSON: ${LOG_JSON:-true}
+      ENABLE_METRICS: ${ENABLE_METRICS:-true}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-15728640}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

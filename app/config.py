@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_json: bool = Field(default=True, alias="LOG_JSON")
 
+    enable_metrics: bool = Field(default=True, alias="ENABLE_METRICS")
+
     mongodb_url: str = Field(default="mongodb://localhost:27017")
     mongodb_db: str = Field(default="nfe_processor")
 
