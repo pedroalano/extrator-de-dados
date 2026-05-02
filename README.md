@@ -74,6 +74,8 @@ Ver [`.env.example`](.env.example). Principais:
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | URL HTTP completa para export de traces OTLP (ex.: `http://tempo:4318/v1/traces`). Com `ENABLE_OTEL=true` e vazio, os spans **não** são enviados (instrumentação activa, export inactivo) |
 | `OTEL_SERVICE_NAME` | Nome do serviço no resource OTEL (`service.name`; corresponde a `app_name` na configuração) |
 
+Runbook detalhado (logs, métricas, traces, probes, erros comuns): [`docs/observabilidade.md`](docs/observabilidade.md).
+
 Sem credenciais válidas para o **provedor activo**, o LLM não é chamado; o XML usa mapeamento em cache ou padrão por tipo.
 
 ## Endpoints
@@ -236,6 +238,8 @@ flowchart LR
 ## Estrutura
 
 ```
+docs/
+  observabilidade.md
 app/
   main.py
   config.py
